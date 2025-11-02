@@ -1,109 +1,102 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for
 import os
 import json
 import uuid
 from werkzeug.utils import secure_filename
-from pdf2image import convert_from_path
+import fitz
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime, timedelta
+from datetime import datetime
 import re
-from functools import wraps
 from config import Config
-from auth_utils import AuthManager
+from auth_utils import auth_manager, login_required
+from ai_checker import AIAnswerChecker
+from dataclasses import asdict
+from flask import send_from_directory
+
+AI_AVAILABLE = False
+checker = None
+
+try:
+    checker = AIAnswerChecker(provider="gemini")
+    AI_AVAILABLE = True
+    print("✅ AI модуль успешно инициализирован")
+except ValueError as e:
+    print(f"⚠️ AI модуль недоступен (нет API ключа): {e}")
+except Exception as e:
+    print(f"❌ AI модуль недоступен (общая ошибка): {e}")
+
+# Функция для получения checker
+def get_ai_checker():
+    """Возвращает глобальный экземпляр AI checker"""
+    return checker if AI_AVAILABLE else None
+    
 
 app = Flask(__name__)
 app.config.from_object(Config)
+app.secret_key = app.config['SECRET_KEY']
 
-# Настройка сессий
-app.secret_key = Config.SECRET_KEY
-app.permanent_session_lifetime = timedelta(hours=Config.SESSION_TIMEOUT_HOURS)
-
-# Создаем необходимые папки
 Config.create_directories()
-
-# Инициализируем менеджер авторизации
-auth_manager = AuthManager()
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in Config.ALLOWED_EXTENSIONS
 
-def login_required(f):
-    """Декоратор для проверки авторизации"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'logged_in' not in session or not session['logged_in']:
-            # Для AJAX запросов возвращаем JSON
-            if request.is_json or request.headers.get('Content-Type') == 'application/json':
-                return jsonify({'error': 'Необходима авторизация', 'redirect': '/login'}), 401
-            return redirect(url_for('login'))
-        
-        # Проверяем актуальность сессии
-        if 'login_time' in session:
-            login_time = datetime.fromisoformat(session['login_time'])
-            if datetime.now() - login_time > app.permanent_session_lifetime:
-                session.clear()
-                if request.is_json or request.headers.get('Content-Type') == 'application/json':
-                    return jsonify({'error': 'Сессия истекла', 'redirect': '/login'}), 401
-                return redirect(url_for('login'))
-        
-        return f(*args, **kwargs)
-    return decorated_function
-
 def convert_pdf_to_images(pdf_path, output_dir):
-    """Конвертация PDF в PNG изображения"""
+    """Конвертация PDF в PNG изображения с использованием PyMuPDF и передача масштаба для полей"""
+    image_data = []
+    base_name = os.path.splitext(os.path.basename(pdf_path))[0]
+
     try:
-        # Для Windows указываем путь к poppler
-        if os.name == 'nt' and os.path.exists(Config.POPPLER_PATH):
-            images = convert_from_path(pdf_path, dpi=Config.PDF_DPI, poppler_path=Config.POPPLER_PATH)
-        else:
-            images = convert_from_path(pdf_path, dpi=Config.PDF_DPI)
-        
-        image_files = []
-        base_name = os.path.splitext(os.path.basename(pdf_path))[0]
-        
-        for i, image in enumerate(images):
+        doc = fitz.open(pdf_path)
+        zoom = Config.PDF_DPI / 72.0
+        matrix = fitz.Matrix(zoom, zoom)
+
+        for i, page in enumerate(doc):
+            pix = page.get_pixmap(matrix=matrix)
             image_filename = f"{base_name}_page_{i+1}.png"
             image_path = os.path.join(output_dir, image_filename)
-            image.save(image_path, 'PNG')
-            image_files.append(image_filename)
-        
-        return image_files
+            pix.save(image_path)
+
+            image_data.append({
+                'filename': image_filename,
+                'width': pix.width,
+                'height': pix.height,
+                'page_width': page.rect.width,
+                'page_height': page.rect.height,
+                'zoom': zoom
+            })
+
+        doc.close()
+        return image_data
     except Exception as e:
-        print(f"Ошибка конвертации PDF: {e}")
+        print(f"Ошибка конвертации PDF (PyMuPDF): {e}")
         return None
 
 def save_to_google_sheets(sheet_url, student_data):
     """Сохранение результатов в Google Таблицы"""
     try:
-        # Загружаем credentials
         creds_path = os.path.join(Config.CREDENTIALS_FOLDER, 'credentials.json')
         if not os.path.exists(creds_path):
             return {"error": "Файл credentials.json не найден"}
-        
+
         creds = Credentials.from_service_account_file(creds_path, scopes=Config.GOOGLE_SHEETS_SCOPES)
         client = gspread.authorize(creds)
-        
-        # Открываем таблицу по URL
         sheet = client.open_by_url(sheet_url)
-        
-        # Создаем или получаем лист "Результаты"
+
         try:
             worksheet = sheet.worksheet("Результаты")
         except gspread.WorksheetNotFound:
             worksheet = sheet.add_worksheet(title="Результаты", rows=1000, cols=10)
-            # Добавляем заголовки
             worksheet.append_row(['ФИО', 'Класс', 'Дата', 'Время', 'Правильных ответов', 'Всего вопросов', 'Процент'])
-        
-        # Добавляем данные
+
         now = datetime.now()
         date_str = now.strftime('%d.%m.%Y')
         time_str = now.strftime('%H:%M:%S')
-        
+
         total_questions = student_data['total_questions']
         correct_answers = student_data['correct_answers']
         percentage = round((correct_answers / total_questions * 100), 1) if total_questions > 0 else 0
-        
+
         row_data = [
             student_data['name'],
             student_data['class'],
@@ -113,127 +106,412 @@ def save_to_google_sheets(sheet_url, student_data):
             total_questions,
             f"{percentage}%"
         ]
-        
+
         worksheet.append_row(row_data)
         return {"success": True}
-        
+
     except Exception as e:
         return {"error": str(e)}
 
-# === МАРШРУТЫ АВТОРИЗАЦИИ ===
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    """Страница входа в систему"""
-    if request.method == 'POST':
-        if request.is_json:
-            # AJAX запрос
-            data = request.get_json()
-            login_name = data.get('login', '').strip()
-            password = data.get('password', '').strip()
-        else:
-            # Обычная форма
-            login_name = request.form.get('login', '').strip()
-            password = request.form.get('password', '').strip()
-        
-        if not login_name or not password:
-            error_msg = "Введите логин и пароль"
-            if request.is_json:
-                return jsonify({"success": False, "error": error_msg})
-            else:
-                return render_template('login.html', error=error_msg)
-        
-        # Проверяем учетные данные
-        auth_result = auth_manager.authenticate_user(login_name, password)
-        
-        if auth_result["success"]:
-            session['logged_in'] = True
-            session['login'] = login_name
-            session['login_time'] = datetime.now().isoformat()
-            session.permanent = True
-            
-            # Добавляем информацию о подписке в сессию
-            if 'days_left' in auth_result and auth_result['days_left'] is not None:
-                session['days_left'] = auth_result['days_left']
-            
-            if request.is_json:
-                return jsonify({"success": True, "redirect": url_for('index')})
-            else:
-                flash('Вход выполнен успешно!', 'success')
-                return redirect(url_for('index'))
-        else:
-            if request.is_json:
-                return jsonify(auth_result)
-            else:
-                return render_template('login.html', error=auth_result["error"])
+@app.route('/ai-settings')
+@login_required
+def ai_settings_page():
+    """Страница настроек AI"""
+    return render_template('ai_settings.html', login=session.get('login'))
+
+
+@app.route('/api/ai/settings', methods=['GET', 'POST'])
+@login_required
+def ai_settings():
+    """API для работы с настройками AI"""
+    settings_file = os.path.join(Config.BASE_DIR, 'ai_settings.json')
     
-    # Если пользователь уже авторизован, перенаправляем
-    if 'logged_in' in session and session['logged_in']:
-        return redirect(url_for('index'))
+    if request.method == 'GET':
+        # Чтение настроек
+        try:
+            if os.path.exists(settings_file):
+                with open(settings_file, 'r', encoding='utf-8') as f:
+                    settings = json.load(f)
+            else:
+                # Настройки по умолчанию из ai_config.py
+                from ai_config import AIConfig
+                settings = {
+                    'ai_enabled': AIConfig.AI_CHECKING_ENABLED,
+                    'similarity_threshold': AIConfig.SIMILARITY_THRESHOLD,
+                    'api_key': 'YOUR_API_KEY_HERE',
+                    'ai_model': AIConfig.GEMINI_MODEL,
+                    'temperature': AIConfig.GENERATION_CONFIG['temperature'],
+                    'max_tokens': AIConfig.GENERATION_CONFIG['max_output_tokens'],
+                    'top_p': AIConfig.GENERATION_CONFIG['top_p'],
+                    'system_prompt': AIConfig.SYSTEM_PROMPT,
+                    'cache_enabled': AIConfig.CACHE_AI_RESPONSES,
+                    'cache_duration': AIConfig.CACHE_DURATION,
+                    'logging_enabled': AIConfig.LOG_AI_REQUESTS,
+                    'log_file': AIConfig.AI_LOG_FILE
+                }
+            
+            return jsonify({'success': True, 'config': settings})
+        
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
     
-    return render_template('login.html')
+    elif request.method == 'POST':
+        # Сохранение настроек
+        try:
+            settings = request.get_json()
+            
+            # Сохраняем в файл
+            with open(settings_file, 'w', encoding='utf-8') as f:
+                json.dump(settings, f, ensure_ascii=False, indent=2)
+            
+            # Обновляем конфигурацию в памяти
+            from ai_config import AIConfig
+            AIConfig.AI_CHECKING_ENABLED = settings.get('ai_enabled', True)
+            AIConfig.SIMILARITY_THRESHOLD = settings.get('similarity_threshold', 0.8)
+            
+            if settings.get('api_key') and not settings['api_key'].startswith('***'):
+                AIConfig.GEMINI_API_KEY = settings['api_key']
+            
+            AIConfig.GEMINI_MODEL = settings.get('ai_model', 'gemini-pro')
+            AIConfig.GENERATION_CONFIG['temperature'] = settings.get('temperature', 0.1)
+            AIConfig.GENERATION_CONFIG['max_output_tokens'] = settings.get('max_tokens', 200)
+            AIConfig.GENERATION_CONFIG['top_p'] = settings.get('top_p', 0.95)
+            AIConfig.SYSTEM_PROMPT = settings.get('system_prompt', AIConfig.SYSTEM_PROMPT)
+            AIConfig.CACHE_AI_RESPONSES = settings.get('cache_enabled', True)
+            AIConfig.CACHE_DURATION = settings.get('cache_duration', 3600)
+            AIConfig.LOG_AI_REQUESTS = settings.get('logging_enabled', True)
+            AIConfig.AI_LOG_FILE = settings.get('log_file', 'logs/ai_checks.log')
+            
+            return jsonify({'success': True, 'message': 'Настройки сохранены'})
+        
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/logout')
-def logout():
-    """Выход из системы"""
-    session.clear()
-    flash('Вы успешно вышли из системы', 'info')
-    return redirect(url_for('login'))
+@app.route('/api/ai/test', methods=['POST'])
+@login_required
+def test_ai():
+    """Тестирование AI проверки"""
+    global checker
+    
+    try:
+        if not checker:
+            return jsonify({
+                'success': False, 
+                'error': "AI Checker недоступен. Проверьте API ключ в переменной GOOGLE_API_KEY."
+            }), 500
+               
+        tests = [
+            {
+                'name': 'Точное совпадение',
+                'student_answer': 'Астана',
+                'correct_answer': 'Астана',
+                'expected': True
+            },
+            {
+                'name': 'Регистр',
+                'student_answer': 'астана',
+                'correct_answer': 'Астана',
+                'expected': True
+            },
+            {
+                'name': 'Синоним',
+                'student_answer': 'столица Казахстана',
+                'correct_answer': 'Астана',
+                'expected': True
+            },
+            {
+                'name': 'Опечатка',
+                'student_answer': 'Астан',
+                'correct_answer': 'Астана',
+                'expected': True
+            },
+            {
+                'name': 'Неправильный ответ',
+                'student_answer': 'Караганда',
+                'correct_answer': 'Астана',
+                'expected': False
+            }
+        ]
 
-@app.route('/user_info')
+        results = []
+        for test in tests:
+            result = checker.check_answer(
+                student_answer=test['student_answer'],
+                correct_variants=[test['correct_answer']],
+                question_context=f"Тест: {test['name']}"
+            )
+            
+            result_dict = asdict(result)
+            
+            test_result = {
+                'name': test['name'],
+                'student_answer': test['student_answer'],
+                'correct_answer': test['correct_answer'],
+                'result': result_dict.get('is_correct', False),
+                'expected': test['expected'],
+                'passed': result_dict.get('is_correct') == test['expected'],
+                'ai_confidence': result_dict.get('confidence', 0.0),
+                'ai_explanation': result_dict.get('explanation', '')
+            }
+            
+            results.append(test_result)
+            
+        return jsonify({'success': True, 'tests': results})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    
+
+
+@app.route('/api/ai/status')
+@login_required
+def ai_status():
+    """Статус AI системы"""
+    try:
+        from ai_config import AIConfig
+        
+        status = {
+            'available': AI_AVAILABLE,
+            'enabled': AIConfig.AI_CHECKING_ENABLED,
+            'api_key_configured': AIConfig.GEMINI_API_KEY != 'YOUR_API_KEY_HERE',
+            'model': AIConfig.GEMINI_MODEL
+        }
+        
+        if not status['available']:
+            status['error'] = 'AI модуль не загружен'
+        elif not status['api_key_configured']:
+            status['error'] = 'API ключ не настроен'
+        
+        return jsonify(status)
+    
+    except Exception as e:
+        return jsonify({
+            'available': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/ai/stats')
+@login_required
+def ai_stats():
+    """Статистика AI проверок"""
+    try:
+        from ai_config import AIConfig
+        
+        stats = {
+            'total_checks': 0,
+            'ai_checks': 0,
+            'cache_size': 0,
+            'success_rate': 0
+        }
+        
+        # Читаем логи для статистики
+        if os.path.exists(AIConfig.AI_LOG_FILE):
+            with open(AIConfig.AI_LOG_FILE, 'r', encoding='utf-8') as f:
+                logs = [json.loads(line) for line in f if line.strip()]
+                
+                stats['total_checks'] = len(logs)
+                stats['ai_checks'] = len(logs)  # Все записи в логах - это AI проверки
+                
+                if logs:
+                    success_count = sum(1 for log in logs if log.get('success'))
+                    stats['success_rate'] = round((success_count / len(logs)) * 100, 1)
+        
+        # Размер кэша
+        try:
+            from ai_checker import get_ai_checker
+            checker = get_ai_checker()
+            if hasattr(checker, 'cache') and checker.cache:
+                stats['cache_size'] = len(checker.cache)
+        except:
+            pass
+        
+        return jsonify({'success': True, **stats})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/ai/logs')
+@login_required
+def ai_logs():
+    """Получение логов AI"""
+    try:
+        from ai_config import AIConfig
+        
+        logs = []
+        if os.path.exists(AIConfig.AI_LOG_FILE):
+            with open(AIConfig.AI_LOG_FILE, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.strip():
+                        try:
+                            logs.append(json.loads(line))
+                        except:
+                            continue
+        
+        return jsonify({'success': True, 'logs': logs})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/ai/logs/clear', methods=['POST'])
+@login_required
+def clear_ai_logs():
+    """Очистка логов AI"""
+    try:
+        from ai_config import AIConfig
+        
+        if os.path.exists(AIConfig.AI_LOG_FILE):
+            # Создаем бэкап перед очисткой
+            backup_file = AIConfig.AI_LOG_FILE + f'.backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+            os.rename(AIConfig.AI_LOG_FILE, backup_file)
+            
+            # Создаем новый пустой файл
+            with open(AIConfig.AI_LOG_FILE, 'w', encoding='utf-8') as f:
+                pass
+        
+        return jsonify({'success': True, 'message': 'Логи очищены (создан бэкап)'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/ai/cache/clear', methods=['POST'])
+@login_required
+def clear_ai_cache():
+    """Очистка кэша AI"""
+    try:
+        from ai_checker import get_ai_checker
+        checker = get_ai_checker()
+        
+        cleared_items = 0
+        if hasattr(checker, 'cache') and checker.cache:
+            cleared_items = len(checker.cache)
+            checker.cache.clear()
+        
+        return jsonify({
+            'success': True,
+            'cleared_items': cleared_items,
+            'message': f'Очищено записей: {cleared_items}'
+        })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/user/info')
 @login_required
 def user_info():
-    """Получение информации о текущем пользователе"""
-    login = session.get('login')
-    if login:
-        info = auth_manager.get_user_info(login)
-        return jsonify(info)
-    return jsonify({"success": False, "error": "Пользователь не найден в сессии"})
+    """Информация о текущем пользователе"""
+    return jsonify({
+        'username': session.get('login', 'Гость'),
+        'logged_in': session.get('logged_in', False)
+    })
 
-# === ОСНОВНЫЕ МАРШРУТЫ ===
+
+# ==========================
+# КОНЕЦ API ЭНДПОИНТОВ
+# ==========================
+
 
 @app.route('/')
 @login_required
 def index():
-    """Главная страница - редактор шаблонов"""
-    user_login = session.get('login', 'Пользователь')
-    days_left = session.get('days_left')
-    return render_template('editor.html', user_login=user_login, days_left=days_left)
+    return render_template('editor.html', login=session.get('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if session.get('logged_in'):
+        return redirect(url_for('index'))
+
+    error = None
+    if request.method == 'POST':
+        login_val = request.form.get('login')
+        password_val = request.form.get('password')
+
+        result = auth_manager.authenticate_user(login_val, password_val)
+
+        if result['success']:
+            session['logged_in'] = True
+            session['login'] = result['login']
+            next_url = request.args.get('next') or url_for('index')
+            return redirect(next_url)
+        else:
+            error = result['error']
+
+    return render_template('login.html', error=error)
+
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    session.pop('login', None)
+    return redirect(url_for('login'))
 
 @app.route('/student')
-@login_required  
 def student():
-    """Страница для студентов"""
-    user_login = session.get('login', 'Пользователь')
-    return render_template('student.html', user_login=user_login)
+    return render_template('student.html')
+
+# Файл: app.py
+
+# ... (другие импорты, например, os, json) ...
+
+@app.route('/get_template_list')
+@login_required
+def get_template_list():
+    """
+    Возвращает список доступных шаблонов для редактора.
+    """
+    try:
+        templates_dir = Config.TEMPLATES_FOLDER
+        template_files = [f for f in os.listdir(templates_dir) if f.endswith('.json')]
+        
+        template_list = []
+        for filename in template_files:
+            try:
+                filepath = os.path.join(templates_dir, filename)
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    template_data = json.load(f)
+                
+                template_list.append({
+                    'id': filename,
+                    'name': template_data.get('name', filename.replace('.json', ''))
+                })
+            except Exception as e:
+                print(f"Ошибка чтения файла шаблона {filename}: {e}")
+                
+        return jsonify(template_list)
+        
+    except FileNotFoundError:
+        return jsonify({'error': 'Папка с шаблонами не найдена или недоступна'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 
 @app.route('/upload', methods=['POST'])
 @login_required
 def upload_file():
-    """Загрузка файлов"""
     if 'file' not in request.files:
         return jsonify({'error': 'Файл не выбран'}), 400
-    
+
     file = request.files['file']
     if file.filename == '':
         return jsonify({'error': 'Файл не выбран'}), 400
-    
+
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
-        # Добавляем префикс пользователя к имени файла для изоляции
-        user_prefix = session.get('login', 'user')
-        filename = f"{user_prefix}_{filename}"
-        
         file_path = os.path.join(Config.UPLOAD_FOLDER, filename)
         file.save(file_path)
-        
-        # Если PDF - конвертируем в изображения
+
         if filename.lower().endswith('.pdf'):
-            image_files = convert_pdf_to_images(file_path, Config.UPLOAD_FOLDER)
-            if image_files:
+            image_data = convert_pdf_to_images(file_path, Config.UPLOAD_FOLDER)
+            if image_data:
                 return jsonify({
                     'success': True,
-                    'files': image_files,
+                    'files': [item['filename'] for item in image_data],
+                    'images_data': image_data,
                     'type': 'pdf'
                 })
             else:
@@ -244,69 +522,83 @@ def upload_file():
                 'files': [filename],
                 'type': 'image'
             })
-    
+
     return jsonify({'error': 'Неподдерживаемый формат файла'}), 400
 
+@app.route('/load_template/<template_id>')
+def load_template(template_id):
+    """
+    УНИВЕРСАЛЬНАЯ функция загрузки шаблона.
+    Работает как с filename.json, так и с template_id.
+    Используется как редактором, так и студентом.
+    """
+    try:
+        # Определяем имя файла
+        if template_id.endswith('.json'):
+            # Если передан полный filename
+            safe_filename = secure_filename(template_id)
+            filepath = os.path.join(Config.TEMPLATES_FOLDER, safe_filename)
+        else:
+            # Если передан template_id
+            filepath = os.path.join(Config.TEMPLATES_FOLDER, f"{template_id}.json")
+
+        # Проверяем существование файла
+        if not os.path.exists(filepath):
+            return jsonify({'error': f'Шаблон не найден'}), 404
+
+        # Читаем и возвращаем содержимое
+        with open(filepath, 'r', encoding='utf-8') as f:
+            template_data = json.load(f)
+
+        return jsonify(template_data)
+
+    except Exception as e:
+        print(f"Ошибка при загрузке шаблона {template_id}: {e}")
+        return jsonify({'error': 'Внутренняя ошибка сервера при чтении шаблона'}), 500
+
 @app.route('/uploads/<filename>')
-@login_required
 def uploaded_file(filename):
-    """Отдача загруженных файлов"""
-    return send_from_directory(Config.UPLOAD_FOLDER, filename)
+    """
+    Обслуживает запросы к загруженным файлам (изображениям) из папки UPLOAD_FOLDER.
+    """
+    # app.config['UPLOAD_FOLDER'] берется из Config.UPLOAD_FOLDER в config.py
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
 
 @app.route('/save_template', methods=['POST'])
 @login_required
 def save_template():
-    """Сохранение шаблона"""
+    """
+    Сохранение шаблона в JSON файл.
+    """
     try:
         data = request.get_json()
-        
-        # Добавляем информацию о создателе
-        data['created_by'] = session.get('login')
-        data['created_at'] = datetime.now().isoformat()
-        
-        # Генерируем ID если не указан
+
+        # Генерация ID если не указан
         if 'template_id' not in data or not data['template_id']:
-            user_prefix = session.get('login', 'user')
-            data['template_id'] = f"{user_prefix}_tpl_{uuid.uuid4().hex[:8]}"
-        
-        # Сохраняем в JSON файл
+            data['template_id'] = f"tpl_{uuid.uuid4().hex[:8]}"
+
+        # Формирование имени файла
         filename = f"{data['template_id']}.json"
         filepath = os.path.join(Config.TEMPLATES_FOLDER, filename)
-        
+
+        # Сохранение
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        
-        return jsonify({'success': True, 'template_id': data['template_id']})
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
-@app.route('/load_template/<template_id>')
-@login_required
-def load_template(template_id):
-    """Загрузка шаблона"""
-    try:
-        filepath = os.path.join(Config.TEMPLATES_FOLDER, f"{template_id}.json")
-        
-        if not os.path.exists(filepath):
-            return jsonify({'error': 'Шаблон не найден'}), 404
-        
-        with open(filepath, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        
-        return jsonify(data)
-    
+        return jsonify({'success': True, 'template_id': data['template_id']})
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
 
 @app.route('/list_templates')
-@login_required
 def list_templates():
-    """Список доступных шаблонов"""
+    """
+    Возвращает список всех шаблонов для студента.
+    """
     try:
         templates = []
-        current_user = session.get('login')
-        
         if os.path.exists(Config.TEMPLATES_FOLDER):
             for filename in os.listdir(Config.TEMPLATES_FOLDER):
                 if filename.endswith('.json'):
@@ -314,32 +606,58 @@ def list_templates():
                     try:
                         with open(filepath, 'r', encoding='utf-8') as f:
                             data = json.load(f)
-                            
-                        # Показываем все шаблоны, но отмечаем владельца
-                        template_info = {
-                            'id': data.get('template_id', filename[:-5]),
-                            'name': data.get('name', filename[:-5]),
-                            'created_by': data.get('created_by', 'Неизвестно'),
-                            'created_at': data.get('created_at', ''),
-                            'is_owner': data.get('created_by') == current_user
-                        }
-                        templates.append(template_info)
+                            templates.append({
+                                'id': data.get('template_id', filename[:-5]),
+                                'name': data.get('name', filename[:-5])
+                            })
                     except Exception as e:
                         print(f"Ошибка чтения шаблона {filename}: {e}")
                         continue
-        
-        # Сортируем по дате создания (новые сначала)
-        templates.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-        
+
         return jsonify(templates)
-    
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+def calculate_similarity(s1, s2):
+    """
+    Вычисляет схожесть двух строк (расстояние Левенштейна)
+    Возвращает значение от 0 до 1, где 1 - полное совпадение
+    """
+    if s1 == s2:
+        return 1.0
+    
+    len1, len2 = len(s1), len(s2)
+    if len1 == 0 or len2 == 0:
+        return 0.0
+    
+    # Матрица расстояний
+    matrix = [[0] * (len2 + 1) for _ in range(len1 + 1)]
+    
+    for i in range(len1 + 1):
+        matrix[i][0] = i
+    for j in range(len2 + 1):
+        matrix[0][j] = j
+    
+    for i in range(1, len1 + 1):
+        for j in range(1, len2 + 1):
+            cost = 0 if s1[i-1] == s2[j-1] else 1
+            matrix[i][j] = min(
+                matrix[i-1][j] + 1,      # удаление
+                matrix[i][j-1] + 1,      # вставка
+                matrix[i-1][j-1] + cost  # замена
+            )
+    
+    distance = matrix[len1][len2]
+    max_len = max(len1, len2)
+    similarity = 1 - (distance / max_len)
+    
+    return similarity
+
+
+# Замените маршрут /check_answers на этот код:
 @app.route('/check_answers', methods=['POST'])
-@login_required
 def check_answers():
-    """Проверка ответов студента"""
     try:
         data = request.get_json()
         template_id = data.get('template_id')
@@ -347,27 +665,26 @@ def check_answers():
         student_info = data.get('student_info', {})
         sheet_url = data.get('sheet_url')
 
-        # Добавляем информацию о том, кто проводил тест
-        student_info['tested_by'] = session.get('login')
-        student_info['test_date'] = datetime.now().isoformat()
-
         # Загружаем шаблон
         template_path = os.path.join(Config.TEMPLATES_FOLDER, f"{template_id}.json")
         if not os.path.exists(template_path):
-            return jsonify({"success": False, "error": "Шаблон не найден"})
+            return jsonify({"success": False, "error": "Шаблон не найден"}), 404
 
         with open(template_path, 'r', encoding='utf-8') as f:
             template = json.load(f)
 
-        # Сортируем поля по ID для обеспечения консистентного порядка
-        fields = sorted(template.get('fields', []), key=lambda x: x['id'])
-        
-        # Проверка ответов
+        template_name = template.get("name", template_id)
+        fields = template.get('fields', [])
+
+        # Получаем AI checker
+        ai_checker = get_ai_checker()
+
         correct_count = 0
         total_count = len(fields)
         detailed_results = []
-        student_answers_list = []  # Список ответов студента в порядке полей
-        question_headers = []  # Заголовки для вопросов
+        student_answers_list = []
+        question_headers = []
+        ai_check_count = 0
 
         for i, field in enumerate(fields):
             field_id = field['id']
@@ -375,39 +692,105 @@ def check_answers():
             student_answer = answers.get(field_id, "").strip()
             student_answer_lower = student_answer.lower()
 
-            is_correct = student_answer_lower in correct_variants if correct_variants else False
+            # Логика проверки
+            is_correct = False
+            checked_by_ai = False
+            ai_confidence = 0.0
+            ai_error = None
+            
+            if correct_variants:
+                # 1. Точное совпадение (с учетом регистра)
+                if student_answer_lower in correct_variants:
+                    is_correct = True
+                    checked_by_ai = False
+                    
+                # 2. Проверка без пробелов и знаков препинания (для числовых ответов)
+                elif any(
+                    student_answer_lower.replace(' ', '').replace(',', '').replace('.', '') == 
+                    variant.replace(' ', '').replace(',', '').replace('.', '')
+                    for variant in correct_variants
+                ):
+                    is_correct = True
+                    checked_by_ai = False
+                    
+                # 3. Проверка начала строки (если ответ студента - начало правильного)
+                elif any(
+                    len(student_answer) >= 3 and 
+                    variant.startswith(student_answer_lower)
+                    for variant in correct_variants
+                ):
+                    is_correct = True
+                    checked_by_ai = False
+                    
+                # 4. Проверка с допуском опечаток (расстояние Левенштейна)
+                elif any(
+                    len(student_answer) > 3 and 
+                    calculate_similarity(student_answer_lower, variant) > 0.85
+                    for variant in correct_variants
+                ):
+                    is_correct = True
+                    checked_by_ai = False
+                    
+                # 5. AI проверка - только если все предыдущие методы не сработали
+                elif ai_checker and student_answer and len(student_answer) > 1:
+                    try:
+                        question_context = correct_variants[0] if correct_variants else ""
+                        
+                        check_result = ai_checker.check_answer(
+                            student_answer=student_answer,
+                            correct_variants=correct_variants,
+                            question_context=question_context
+                        )
+                        
+                        result_dict = asdict(check_result)
+                        
+                        is_correct = result_dict.get('is_correct', False)
+                        checked_by_ai = True
+                        ai_confidence = result_dict.get('confidence', 0.0)
+                        
+                        if is_correct:
+                            ai_check_count += 1
+                            
+                    except Exception as ai_err:
+                        ai_error = str(ai_err)
+                        is_correct = False
+                        checked_by_ai = True
+                        print(f"⚠️ Ошибка AI проверки для поля {field_id}: {ai_err}")
+
             if is_correct:
                 correct_count += 1
 
-            detailed_results.append({
+            # Подготовка детального результата
+            detail = {
                 "field_id": field_id,
                 "student_answer": student_answer,
                 "correct_variants": correct_variants,
-                "is_correct": is_correct
-            })
+                "is_correct": is_correct,
+                "checked_by_ai": checked_by_ai,
+                "ai_confidence": ai_confidence
+            }
             
-            # Добавляем ответ студента в список
+            if ai_error:
+                detail["ai_error"] = ai_error
+            
+            detailed_results.append(detail)
             student_answers_list.append(student_answer)
-            
-            # Создаем заголовок для вопроса
+
+            # Формирование заголовков
             if correct_variants:
-                # Берем первый правильный вариант как основной заголовок
                 base_header = correct_variants[0]
-                # Очищаем от специальных символов и ограничиваем длину
-                clean_header = re.sub(r'[^\w\s\-а-яё\'А-ЯЁ]', '', base_header)
-                clean_header = clean_header[:30].strip()  # Ограничиваем длину
-                
-                # Если заголовок пустой после очистки, используем номер вопроса
+                clean_header = re.sub(r'[^\w\s\-а-яёА-ЯЁ]', '', base_header)
+                clean_header = clean_header[:30].strip()
+
                 if not clean_header:
                     clean_header = f"Вопрос {i+1}"
-                
-                # Добавляем номер вопроса если есть дубликаты
+
                 header = clean_header
                 if clean_header in question_headers:
                     header = f"{clean_header} ({i+1})"
             else:
                 header = f"Вопрос {i+1}"
-            
+
             question_headers.append(header)
 
         percentage = round((correct_count / total_count) * 100, 2) if total_count else 0
@@ -416,76 +799,78 @@ def check_answers():
         sheets_result = None
         if sheet_url:
             try:
-                # Загружаем credentials
                 creds_path = os.path.join(Config.CREDENTIALS_FOLDER, 'credentials.json')
                 if not os.path.exists(creds_path):
-                    sheets_result = {"success": False, "error": "Файл credentials.json не найден"}
-                else:
-                    creds = Credentials.from_service_account_file(creds_path, scopes=Config.GOOGLE_SHEETS_SCOPES)
-                    client = gspread.authorize(creds)
-                    
-                    # Открываем таблицу по URL
-                    sheet = client.open_by_url(sheet_url)
-                    
-                    # Создаем или получаем лист "Результаты"
-                    try:
-                        worksheet = sheet.worksheet("Результаты")
-                    except gspread.WorksheetNotFound:
-                        worksheet = sheet.add_worksheet(title="Результаты", rows=1000, cols=50)
-                    
-                    # Получаем все существующие данные
-                    try:
-                        existing_data = worksheet.get_all_values()
-                    except:
-                        existing_data = []
-                    
-                    # Создаем заголовки
-                    base_headers = [
-                        "Название шаблона",
-                        "ФИО", 
-                        "Класс",
-                        "Дата",
-                        "Время",
-                        "Проверяющий",
-                        "Правильных ответов",
-                        "Всего вопросов",
-                        "Процент"
-                    ]
-                    
-                    all_headers = base_headers + question_headers
-                    
-                    # Если лист пустой или заголовки не совпадают, обновляем их
-                    if not existing_data or existing_data[0] != all_headers:
-                        worksheet.clear()
-                        worksheet.append_row(all_headers)
-                    
-                    # Формируем данные для строки
-                    now = datetime.now()
-                    base_row_data = [
-                        template.get("name", template_id),
-                        student_info.get("name", ""),
-                        student_info.get("class", ""),
-                        now.strftime("%d.%m.%Y"),
-                        now.strftime("%H:%M:%S"),
-                        session.get('login', ''),
-                        correct_count,
-                        total_count,
-                        f"{percentage}%"
-                    ]
-                    
-                    complete_row_data = base_row_data + student_answers_list
-                    
-                    # Добавляем новую строку
-                    worksheet.append_row(complete_row_data)
-                    
-                    sheets_result = {
-                        "success": True,
-                        "message": f"Результаты сохранены. Добавлено {len(complete_row_data)} значений",
-                        "headers": question_headers
-                    }
-                    
+                    raise Exception("Файл credentials.json не найден")
+
+                creds = Credentials.from_service_account_file(
+                    creds_path, 
+                    scopes=Config.GOOGLE_SHEETS_SCOPES
+                )
+                client = gspread.authorize(creds)
+                sheet = client.open_by_url(sheet_url)
+                worksheet_title = template_name
+
+                try:
+                    worksheet = sheet.worksheet(worksheet_title)
+                except gspread.WorksheetNotFound:
+                    worksheet = sheet.add_worksheet(
+                        title=worksheet_title, 
+                        rows=1000, 
+                        cols=30
+                    )
+
+                existing_data = worksheet.get_all_values()
+
+                base_headers = [
+                    "Название шаблона",
+                    "ФИО",
+                    "Класс",
+                    "Дата",
+                    "Время",
+                    "Правильных ответов",
+                    "Всего вопросов",
+                    "Процент",
+                    "AI проверок"
+                ]
+
+                all_headers = base_headers + question_headers
+
+                if not existing_data or existing_data[0] != all_headers:
+                    worksheet.clear()
+                    worksheet.append_row(all_headers)
+
+                now = datetime.now()
+                
+                # Поддержка обоих форматов: старого (name/class) и нового (studentName/studentClass)
+                student_name = student_info.get("studentName") or student_info.get("name", "")
+                student_class = student_info.get("studentClass") or student_info.get("class", "")
+                
+                base_row_data = [
+                    template_name,
+                    student_name,
+                    student_class,
+                    now.strftime("%d.%m.%Y"),
+                    now.strftime("%H:%M:%S"),
+                    correct_count,
+                    total_count,
+                    f"{percentage}%",
+                    ai_check_count
+                ]
+
+                complete_row_data = base_row_data + student_answers_list
+                worksheet.append_row(complete_row_data)
+
+                sheets_result = {
+                    "success": True,
+                    "message": f"Результаты сохранены во вкладку '{worksheet_title}'."
+                }
+
             except Exception as e:
-                sheets_result = {"success": False, "error": str(e)}
+                sheets_result = {
+                    "success": False, 
+                    "error": f"Ошибка Google Sheets: {str(e)}"
+                }
 
         return jsonify({
             "success": True,
@@ -494,26 +879,25 @@ def check_answers():
             "percentage": percentage,
             "details": detailed_results,
             "sheets_result": sheets_result,
-            "question_headers": question_headers,
-            "tested_by": session.get('login')
+            "ai_check_count": ai_check_count,
+            "ai_available": AI_AVAILABLE
         })
 
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)})
+        print(f"❌ Ошибка в check_answers: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+    
 
 @app.route('/static/classes.json')
-@login_required
 def get_classes():
-    """Получение списка классов"""
     try:
         classes_path = os.path.join(Config.STATIC_FOLDER, 'classes.json')
         with open(classes_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except FileNotFoundError:
-        # Создаем файл по умолчанию
         default_classes = [
             "1А", "1Б", "1В",
-            "2А", "2Б", "2В", 
+            "2А", "2Б", "2В",
             "3А", "3Б", "3В",
             "4А", "4Б", "4В",
             "5А", "5Б", "5В",
@@ -524,44 +908,13 @@ def get_classes():
             "10А", "10Б",
             "11А", "11Б"
         ]
-        
+
         os.makedirs(Config.STATIC_FOLDER, exist_ok=True)
         classes_path = os.path.join(Config.STATIC_FOLDER, 'classes.json')
         with open(classes_path, 'w', encoding='utf-8') as f:
             json.dump(default_classes, f, ensure_ascii=False, indent=2)
-        
+
         return jsonify(default_classes)
 
-# === ОБРАБОТЧИКИ ОШИБОК ===
-
-@app.errorhandler(401)
-def unauthorized(error):
-    if request.is_json:
-        return jsonify({'error': 'Необходима авторизация', 'redirect': '/login'}), 401
-    return redirect(url_for('login'))
-
-@app.errorhandler(404)
-def not_found(error):
-    if request.is_json:
-        return jsonify({'error': 'Страница не найдена'}), 404
-    return render_template('error.html', error="Страница не найдена"), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    if request.is_json:
-        return jsonify({'error': 'Внутренняя ошибка сервера'}), 500
-    return render_template('error.html', error="Внутренняя ошибка сервера"), 500
-
 if __name__ == '__main__':
-    # Проверяем наличие credentials.json
-    if not Config.check_credentials():
-        print("\n" + "="*60)
-        print("⚠️  ВНИМАНИЕ: Система авторизации требует настройки!")
-        print("="*60)
-    
-    print(f"\n🚀 Запуск приложения...")
-    print(f"📊 Google Таблица пользователей: {Config.USERS_SHEET_URL}")
-    print(f"🔐 Авторизация: {'Включена' if Config.check_credentials() else 'Требует настройки'}")
-    print(f"🌐 Приложение будет доступно по адресу: http://localhost:5000")
-    
     app.run(debug=Config.DEBUG)
