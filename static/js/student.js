@@ -165,6 +165,9 @@ async function startTest() {
             document.getElementById('testArea').style.display = 'block';
             
             // Показываем имя и класс если есть элементы
+            const submitBtn = document.getElementById('submitBtn');
+            if (submitBtn) submitBtn.disabled = true;
+
             const displayName = document.getElementById('displayName');
             const displayClass = document.getElementById('displayClass');
             if (displayName) displayName.textContent = name;
@@ -361,6 +364,12 @@ function updateProgress() {
 
     if (progressElement) progressElement.textContent = filledFields;
     if (totalFieldsElement) totalFieldsElement.textContent = totalFields;
+
+    // Активируем кнопку, только если все поля заполнены
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) {
+        submitBtn.disabled = filledFields !== totalFields;
+    }
 }
 
 // ====================================================================
@@ -368,6 +377,7 @@ function updateProgress() {
 // ====================================================================
 
 async function checkAnswers() {
+    const submitBtn = document.getElementById('submitBtn');
     saveCurrentPageAnswers();
 
     const totalFields = currentTemplate.fields.length;
@@ -379,7 +389,6 @@ async function checkAnswers() {
         }
     }
 
-    const submitBtn = document.getElementById('submitBtn');
     if (submitBtn) {
         submitBtn.innerHTML = `
             <span style="display: flex; align-items: center; justify-content: center;">
@@ -430,7 +439,7 @@ async function checkAnswers() {
         showModal('Ошибка: ' + error.message);
     } finally {
         if (submitBtn) {
-            submitBtn.textContent = 'Завершить и проверить';
+            submitBtn.innerHTML = '✅ Завершить и проверить';
             submitBtn.disabled = false;
         }
     }

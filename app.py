@@ -435,7 +435,6 @@ def user_info():
 
 
 @app.route('/')
-@login_required
 def home():
     """Новая главная страница для выбора роли."""
     return render_template('index.html')
@@ -448,7 +447,7 @@ def editor_page():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if session.get('logged_in'):
-        return redirect(url_for('index'))
+        return redirect(url_for('editor_page'))
 
     error = None
     if request.method == 'POST':
