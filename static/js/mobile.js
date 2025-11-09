@@ -24,9 +24,7 @@ class MobileUX {
 
         document.addEventListener('touchend', (event) => {
             // Пропускаем все input элементы
-            if (event.target.tagName === 'INPUT' ||
-                event.target.tagName === 'TEXTAREA' ||
-                event.target.closest('.student-field-wrapper')) {
+            if (event.target.closest('input, textarea, .student-field-wrapper')) {
                 return;
             }
 

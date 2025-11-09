@@ -314,7 +314,9 @@ async function viewLogs() {
                         <div style="color: #666; font-size: 10px;">${statusIcon} ${time}</div>
                         <div><strong>Ответ:</strong> "${log.student_answer}"</div>
                         <div><strong>Правильно:</strong> ${log.correct_variants.join(', ')}</div>
-                        <div><strong>AI:</strong> ${log.ai_result || 'N/A'}</div>
+                        <div><strong>AI:</strong> 
+                            <pre style="margin: 0; padding: 5px; background: #eee; border-radius: 3px; font-size: 11px;">${log.ai_result ? JSON.stringify(log.ai_result, null, 2) : 'N/A'}</pre>
+                        </div>
                     </div>
                 `;
             });

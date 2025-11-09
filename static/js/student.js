@@ -168,7 +168,7 @@ async function startTest() {
             const displayName = document.getElementById('displayName');
             const displayClass = document.getElementById('displayClass');
             if (displayName) displayName.textContent = name;
-            if (displayClass) displayClass.textContent = studentClass;
+            if (displayClass) displayClass.textContent = studentClass;showResults
 
             loadTestDocument();
             updateProgress();
@@ -439,6 +439,7 @@ async function checkAnswers() {
 // ====================================================================
 //                             РЕЗУЛЬТАТЫ
 // ====================================================================
+// Замените функцию showResults в student.js на эту версию:
 
 function showResults(result) {
     document.getElementById('testArea').style.display = 'none';
@@ -475,7 +476,7 @@ function showResults(result) {
                 detailSpan.textContent = result.sheets_result.message;
                 sheetsStatus.appendChild(detailSpan);
             }
-        } else {
+        } else if (result.sheets_result) {
             sheetsStatus.textContent = "❌ Не удалось сохранить в Google Таблицу: " + (result.sheets_result?.error || "");
             sheetsStatus.style.color = "#e74c3c";
         }
@@ -485,70 +486,160 @@ function showResults(result) {
     const answerReview = document.getElementById('answerReview');
     if (answerReview && result.details) {
         answerReview.innerHTML = '<h3>Результаты по вопросам:</h3>';
+        
         result.details.forEach((detail, index) => {
             const isCorrect = detail.is_correct;
             const icon = isCorrect ? '✅' : '❌';
             
-            // Метод проверки для отладки
-            let methodInfo = '';
-            if (detail.check_method && detail.check_method !== 'exact' && detail.check_method !== 'none') {
+            // Определяем метод проверки для отображения
+            let methodBadge = '';
+            if (detail.check_method) {
                 const methodNames = {
-                    'boolean': '🔢 Логическое значение',
+                    'exact': '🎯 Точное совпадение',
                     'numeric_sequence': '🔢 Числовая последовательность',
-                    'keywords': '🔑 Ключевые слова',
-                    'ai': '🤖 ИИ',
-                    'ai_error': '⚠️ Ошибка ИИ'
+                    'partial_match': '📝 Частичное совпадение',
+                    'similarity_85': '📊 Схожесть 85%',
+                    'ai': '🤖 Проверено AI',
+                    'ai_error': '⚠️ Ошибка AI',
+                    'none': '❓ Не проверено'
                 };
                 
                 let methodName = methodNames[detail.check_method] || detail.check_method;
-                if (detail.check_method.startsWith('similarity_')) {
-                    methodName = `📊 Схожесть ${detail.check_method.split('_')[1]}`;
-                }
                 
-                methodInfo = `<small style="color: #666; display: block; margin-top: 4px;">Метод: ${methodName}</small>`;
+                const bgColor = detail.check_method === 'ai' ? '#e3f2fd' : 
+                               detail.check_method === 'ai_error' ? '#ffebee' : 
+                               detail.check_method === 'exact' ? '#e8f5e9' : '#f5f5f5';
+                
+                methodBadge = `
+                    <div style="
+                        display: inline-block;
+                        margin-top: 6px;
+                        padding: 4px 8px;
+                        background: ${bgColor};
+                        border-radius: 4px;
+                        font-size: 11px;
+                        font-weight: 500;
+                    ">
+                        ${methodName}
+                    </div>
+                `;
             }
             
+            // AI информация
             let aiInfo = '';
             if (detail.checked_by_ai) {
-                const aiIcon = isCorrect ? '🤖✅' : '🤖❌';
+                const aiIcon = detail.check_method === 'ai_error' ? '⚠️' : '🤖';
                 const confidence = detail.ai_confidence ? `${(detail.ai_confidence * 100).toFixed(1)}%` : 'N/A';
+                
+                const bgColor = detail.check_method === 'ai_error' ? '#ffebee' : '#e3f2fd';
+                const textColor = detail.check_method === 'ai_error' ? '#c62828' : '#1565c0';
+                
                 aiInfo = `
-                    <div style="margin-top: 8px; padding: 8px; background: #f0f0f0; border-radius: 4px; font-size: 12px;">
-                        <strong>${aiIcon} Проверено ИИ | Уверенность: ${confidence}</strong>
-                        ${detail.ai_error ? `<p style="color: #e74c3c; margin: 4px 0 0 0;">⚠️ ${detail.ai_error}</p>` : ''}
+                    <div style="
+                        margin-top: 10px;
+                        padding: 10px;
+                        background: ${bgColor};
+                        border-left: 3px solid ${textColor};
+                        border-radius: 4px;
+                        font-size: 12px;
+                    ">
+                        <div style="font-weight: 600; color: ${textColor}; margin-bottom: 4px;">
+                            ${aiIcon} AI Проверка | Уверенность: ${confidence}
+                        </div>
+                        ${detail.ai_explanation ? `
+                            <div style="
+                                color: #555;
+                                line-height: 1.4;
+                                font-size: 11px;
+                                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                            ">
+                                ${detail.ai_explanation}
+                            </div>
+                        ` : ''}
                     </div>
                 `;
             }
             
             const div = document.createElement('div');
+            div.style.margin = '15px 0';
+            div.style.padding = '15px';
+            div.style.borderRadius = '8px';
+            div.style.background = isCorrect ? '#d4edda' : '#f8d7da';
+            div.style.border = `2px solid ${isCorrect ? '#c3e6cb' : '#f5c6cb'}`;
+            div.style.transition = 'all 0.3s ease';
+            
             div.innerHTML = `
-                <div style="margin: 10px 0; padding: 10px; border-radius: 5px;
-                           background: ${isCorrect ? '#d4edda' : '#f8d7da'};
-                           border: 1px solid ${isCorrect ? '#c3e6cb' : '#f5c6cb'};">
-                    <strong>Вопрос ${index + 1}: ${icon}</strong><br>
-                    Ваш ответ: "${detail.student_answer || '—'}"<br>
-                    Правильно: ${detail.correct_variants.join(', ') || '—'}
-                    ${methodInfo}
-                    ${aiInfo}
+                <div style="font-weight: 600; font-size: 14px; margin-bottom: 8px;">
+                    Вопрос ${index + 1}: ${icon}
                 </div>
+                <div style="margin: 6px 0;">
+                    <strong>Ваш ответ:</strong> 
+                    <span style="
+                        background: white;
+                        padding: 2px 6px;
+                        border-radius: 3px;
+                        font-family: monospace;
+                    ">${detail.student_answer || '—'}</span>
+                </div>
+                <div style="margin: 6px 0;">
+                    <strong>Правильно:</strong> 
+                    ${detail.correct_variants.map(v => `
+                        <span style="
+                            background: white;
+                            padding: 2px 6px;
+                            border-radius: 3px;
+                            font-family: monospace;
+                            margin-right: 4px;
+                        ">${v}</span>
+                    `).join('') || '—'}
+                </div>
+                ${methodBadge}
+                ${aiInfo}
             `;
+            
             answerReview.appendChild(div);
         });
     }
 
     // Информация об AI проверках
-    if (result.ai_check_count > 0) {
-        const aiInfo = document.createElement('div');
-        aiInfo.style.marginTop = '15px';
-        aiInfo.style.padding = '12px';
-        aiInfo.style.background = '#e3f2fd';
-        aiInfo.style.borderRadius = '6px';
-        aiInfo.style.textAlign = 'center';
-        aiInfo.innerHTML = `<strong>🤖 ИИ проверил ${result.ai_check_count} из ${result.total_count} ответов</strong>`;
+    if (result.ai_check_count > 0 || result.ai_available) {
+        const aiSummary = document.createElement('div');
+        aiSummary.style.marginTop = '20px';
+        aiSummary.style.padding = '15px';
+        aiSummary.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+        aiSummary.style.borderRadius = '8px';
+        aiSummary.style.color = 'white';
+        aiSummary.style.textAlign = 'center';
+        aiSummary.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+        
+        if (result.ai_check_count > 0) {
+            aiSummary.innerHTML = `
+                <div style="font-size: 16px; font-weight: 600; margin-bottom: 5px;">
+                    🤖 Искусственный интеллект проверил
+                </div>
+                <div style="font-size: 24px; font-weight: 700;">
+                    ${result.ai_check_count} из ${result.total_count} ответов
+                </div>
+                <div style="font-size: 12px; opacity: 0.9; margin-top: 5px;">
+                    Остальные проверены автоматически по точному совпадению
+                </div>
+            `;
+        } else {
+            aiSummary.innerHTML = `
+                <div style="font-size: 14px;">
+                    ✅ Все ответы проверены автоматически по точному совпадению
+                </div>
+            `;
+        }
         
         if (answerReview) {
-            answerReview.appendChild(aiInfo);
+            answerReview.appendChild(aiSummary);
         }
+    }
+    
+    // Добавляем кнопку "Показать логи" для отладки (опционально)
+    if (console && result.details) {
+        console.log('Детальные результаты проверки:', result);
     }
 }
 

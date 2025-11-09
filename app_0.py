@@ -10,7 +10,7 @@ from datetime import datetime
 import re
 from config import Config
 from auth_utils import auth_manager, login_required
-from ai_checker import AIAnswerChecker
+from ai_checker_0 import AIAnswerChecker
 from dataclasses import asdict
 from flask import send_from_directory
 
@@ -436,13 +436,7 @@ def user_info():
 
 @app.route('/')
 @login_required
-def home():
-    """Новая главная страница для выбора роли."""
-    return render_template('index.html')
-
-@app.route('/editor')
-@login_required
-def editor_page():
+def index():
     return render_template('editor.html', login=session.get('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -460,7 +454,7 @@ def login():
         if result['success']:
             session['logged_in'] = True
             session['login'] = result['login']
-            next_url = request.args.get('next') or url_for('editor_page')
+            next_url = request.args.get('next') or url_for('index')
             return redirect(next_url)
         else:
             error = result['error']
@@ -678,15 +672,13 @@ def calculate_similarity(s1, s2):
     
     return similarity
 
-# Замените маршрут /check_answers в app.py на этот код:
 
+# Замените маршрут /check_answers на этот код:
 @app.route('/check_answers', methods=['POST'])
 def check_answers():
     try:
         # Загружаем актуальные настройки перед каждой проверкой
         from ai_config import AIConfig
-        AIConfig.load_from_file()
-        
         data = request.get_json()
         template_id = data.get('template_id')
         answers = data.get('answers', {})
@@ -720,20 +712,17 @@ def check_answers():
             student_answer = answers.get(field_id, "").strip()
             student_answer_lower = student_answer.lower()
 
-            # Инициализируем переменные для каждого поля
+            # Логика проверки
             is_correct = False
             checked_by_ai = False
             ai_confidence = 0.0
-            ai_explanation = ""
             ai_error = None
-            check_method = "none"
             
             if correct_variants:
                 # 1. Точное совпадение (с учетом регистра)
                 if student_answer_lower in correct_variants:
                     is_correct = True
                     checked_by_ai = False
-                    check_method = "exact"
                     
                 # 2. Проверка без пробелов и знаков препинания (для числовых ответов)
                 elif any(
@@ -743,7 +732,6 @@ def check_answers():
                 ):
                     is_correct = True
                     checked_by_ai = False
-                    check_method = "numeric_sequence"
                     
                 # 3. Проверка начала строки (если ответ студента - начало правильного)
                 elif any(
@@ -753,7 +741,6 @@ def check_answers():
                 ):
                     is_correct = True
                     checked_by_ai = False
-                    check_method = "partial_match"
                     
                 # 4. Проверка с допуском опечаток (расстояние Левенштейна)
                 elif any(
@@ -763,16 +750,11 @@ def check_answers():
                 ):
                     is_correct = True
                     checked_by_ai = False
-                    check_method = "similarity_85"
                     
                 # 5. AI проверка - только если все предыдущие методы не сработали
                 elif ai_checker and student_answer and len(student_answer) > 1:
                     try:
                         question_context = correct_variants[0] if correct_variants else ""
-                        
-                        print(f"🤖 AI проверка для поля {field_id}:")
-                        print(f"   Ответ студента: '{student_answer}'")
-                        print(f"   Правильные варианты: {correct_variants}")
                         
                         check_result = ai_checker.check_answer(
                             student_answer=student_answer,
@@ -784,71 +766,39 @@ def check_answers():
                         
                         result_dict = asdict(check_result)
                         
-                        print(f"   ✅ Результат: {result_dict}")
-                        
                         is_correct = result_dict.get('is_correct', False)
                         checked_by_ai = True
                         ai_confidence = result_dict.get('confidence', 0.0)
-                        ai_explanation = result_dict.get('explanation', 'Нет объяснения от AI')
-                        check_method = "ai"
+                        ai_explanation = result_dict.get('explanation', '') # <--- ДОБАВЛЕНО
                         
                         if is_correct:
                             ai_check_count += 1
+                            
 
-                        # === ЛОГИРОВАНИЕ AI ПРОВЕРКИ ===
+                        # === НАЧАЛО БЛОКА ЛОГИРОВАНИЯ ===
                         if AIConfig.LOG_AI_REQUESTS:
                             log_entry = {
                                 "timestamp": datetime.now().isoformat(),
                                 "template_id": template_id,
                                 "field_id": field_id,
-                                "question_number": i + 1,
                                 "student_answer": student_answer,
                                 "correct_variants": correct_variants,
                                 "question_context": question_context,
                                 "ai_provider": result_dict.get('ai_provider', 'unknown'),
-                                "is_correct": is_correct,
-                                "confidence": ai_confidence,
-                                "explanation": ai_explanation,
-                                "success": True
+                                "ai_result": result_dict,
+                                "success": is_correct
                             }
-                            
                             log_file_path = os.path.join(Config.BASE_DIR, AIConfig.AI_LOG_FILE)
-                            os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
-                            
                             with open(log_file_path, 'a', encoding='utf-8') as log_f:
                                 log_f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
+                        # === КОНЕЦ БЛОКА ЛОГИРОВАНИЯ ===
 
                     except Exception as ai_err:
                         ai_error = str(ai_err)
                         is_correct = False
                         checked_by_ai = True
-                        ai_explanation = f"Ошибка вызова AI: {ai_error}"
-                        check_method = "ai_error"
+                        ai_explanation = f"Ошибка вызова AI: {ai_error}" # <--- ДОБАВЛЕНО
                         print(f"⚠️ Ошибка AI проверки для поля {field_id}: {ai_err}")
-                        
-                        # Выводим полный traceback для отладки
-                        import traceback
-                        traceback.print_exc()
-                        
-                        # === ЛОГИРОВАНИЕ ОШИБКИ AI ===
-                        if AIConfig.LOG_AI_REQUESTS:
-                            log_entry = {
-                                "timestamp": datetime.now().isoformat(),
-                                "template_id": template_id,
-                                "field_id": field_id,
-                                "question_number": i + 1,
-                                "student_answer": student_answer,
-                                "correct_variants": correct_variants,
-                                "error": ai_error,
-                                "error_traceback": traceback.format_exc(),
-                                "success": False
-                            }
-                            
-                            log_file_path = os.path.join(Config.BASE_DIR, AIConfig.AI_LOG_FILE)
-                            os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
-                            
-                            with open(log_file_path, 'a', encoding='utf-8') as log_f:
-                                log_f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
 
             if is_correct:
                 correct_count += 1
@@ -861,12 +811,12 @@ def check_answers():
                 "is_correct": is_correct,
                 "checked_by_ai": checked_by_ai,
                 "ai_confidence": ai_confidence,
-                "ai_explanation": ai_explanation if checked_by_ai else None,
-                "check_method": check_method
+                "ai_explanation": ai_explanation if checked_by_ai else None
             }
             
             if ai_error:
                 detail["ai_error"] = ai_error
+                detail["ai_explanation"] = ai_error # Дублируем для отображения
             
             detailed_results.append(detail)
             student_answers_list.append(student_answer)
@@ -937,6 +887,7 @@ def check_answers():
 
                 now = datetime.now()
                 
+                # Поддержка обоих форматов: старого (name/class) и нового (studentName/studentClass)
                 student_name = student_info.get("studentName") or student_info.get("name", "")
                 student_class = student_info.get("studentClass") or student_info.get("class", "")
                 
@@ -979,9 +930,8 @@ def check_answers():
 
     except Exception as e:
         print(f"❌ Ошибка в check_answers: {e}")
-        import traceback
-        traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
+    
 
 @app.route('/static/classes.json')
 def get_classes():

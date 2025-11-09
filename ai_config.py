@@ -15,7 +15,7 @@ class AIConfig:
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', 'YOUR_API_KEY_HERE')
     
     # Модель Gemini для использования
-    GEMINI_MODEL = 'gemini-2.5-flash'
+    GEMINI_MODEL = 'gemini-2.0-flash'
     
     # Включить/выключить AI проверку
     AI_CHECKING_ENABLED = True
@@ -28,72 +28,23 @@ class AIConfig:
         "temperature": 0.0,  # Уменьшаем для более предсказуемых результатов
         "top_p": 0.8,        # Снижаем для меньшей вариативности
         "top_k": 10,         # Ограничиваем выбор токенов
-        "max_output_tokens": 50,  # Достаточно для "ВЕРНО"/"НЕВЕРНО"
+        "max_output_tokens": 100,  # Достаточно для JSON
         "candidate_count": 1
     }
     
-    # Системный промпт для проверки ответов
-    SYSTEM_PROMPT = """Ты - эксперт по проверке ответов студентов. Твоя задача - определить, является ли ответ студента ВЕРНЫМ или НЕВЕРНЫМ.
-
-КРИТЕРИИ ПРОВЕРКИ:
-
-1. ЧИСЛОВЫЕ И СИМВОЛЬНЫЕ ОТВЕТЫ:
-   - "0 1 1 0" === "0110" (игнорируй пробелы)
-   - "1/2" === "0.5" === "половина"
-   - "верно" === "1" === "да" === "true"
-   - "неверно" === "0" === "нет" === "false"
-
-2. ТЕКСТОВЫЕ ОТВЕТЫ:
-   - Игнорируй падежи: "выборка примеров" === "выборки примеров"
-   - Игнорируй артикли и предлоги: "функция ошибки" === "функций ошибок"
-   - Принимай синонимы: "столица" === "главный город"
-   - Принимай аббревиатуры: "KZ" === "Казахстан"
-
-3. ОПЕЧАТКИ И ГРАММАТИКА:
-   - Принимай ответы с 1-2 опечатками если смысл ясен
-   - Игнорируй лишние пробелы, запятые, точки
-   - Регистр букв не важен
-
-4. ЧАСТИЧНЫЕ ОТВЕТЫ:
-   - Если студент дал ЧАСТЬ правильного ответа (ключевые слова) - это ВЕРНО
-   - Пример: Правильно "для обучения используются изображения яблок"
-            Студент ответил "датасеты, изображения" - это ВЕРНО (есть ключевые слова)
-
-5. СТРОГОСТЬ:
-   - Отвергай только если ответ ЯВНО неправильный по смыслу
-   - Если есть МАЛЕЙШЕЕ сомнение - склоняйся к ВЕРНО
-
-ФОРМАТ ОТВЕТА:
-Отвечай ТОЛЬКО одним словом: "ВЕРНО" или "НЕВЕРНО".
-Никаких объяснений, никаких дополнительных слов.
-
-ПРИМЕРЫ:
-Правильно: "выборки примеров"
-Студент: "выборка примеров" -> ВЕРНО (падеж)
-
-Правильно: "0110110"
-Студент: "0 1 1 0 1 1 0" -> ВЕРНО (пробелы)
-
-Правильно: "неверно"
-Студент: "0" -> ВЕРНО (синоним)
-
-Правильно: "для обучения будут использованы изображения яблок"
-Студент: "вес, датасеты" -> НЕВЕРНО (нет ключевых слов из правильного ответа)
-
-Правильно: "Астана"
-Студент: "Караганда" -> НЕВЕРНО (другой город)
-"""
-    # Шаблон запроса для AI
-    VERIFICATION_PROMPT_TEMPLATE = """Вопрос/Задание: {question_context}
-
-Эталонные правильные ответы:
-{correct_answers}
-
-Ответ ученика:
-"{student_answer}"
-
-Проверь, является ли ответ ученика правильным."""
-
+    # ВАЖНО: Этот промпт НЕ используется в _build_gemini_request_body
+    # Оставлен для совместимости с веб-интерфейсом
+    SYSTEM_PROMPT = """Ты - эксперт по проверке ответов студентов. 
+Отвечай СТРОГО в формате JSON: {{"is_correct": true/false, "confidence": число от 0 до 100, "explanation": "краткое пояснение"}}"""
+    
+    # Этот промпт тоже НЕ используется напрямую в новой версии
+    # Промпт теперь встроен в _build_gemini_request_body для избежания проблем с .format()
+    VERIFICATION_PROMPT_TEMPLATE = """Проверь ответ студента.
+Контекст: {{question_context}}
+Правильные ответы: {{correct_answers}}
+Ответ студента: {{student_answer}}
+Ответь в JSON формате."""
+    
     # Настройки логирования AI запросов
     LOG_AI_REQUESTS = True
     AI_LOG_FILE = 'logs/ai_checks.log'
@@ -122,10 +73,14 @@ class AIConfig:
                         AIConfig.GEMINI_API_KEY = settings['api_key']
                     
                     AIConfig.GEMINI_MODEL = settings.get('ai_model', AIConfig.GEMINI_MODEL)
-                    AIConfig.GENERATION_CONFIG['temperature'] = settings.get('temperature', 0.1)
-                    AIConfig.GENERATION_CONFIG['max_output_tokens'] = settings.get('max_tokens', 200)
-                    AIConfig.GENERATION_CONFIG['top_p'] = settings.get('top_p', 0.95)
-                    AIConfig.SYSTEM_PROMPT = settings.get('system_prompt', AIConfig.SYSTEM_PROMPT)
+                    AIConfig.GENERATION_CONFIG['temperature'] = settings.get('temperature', 0.0)
+                    AIConfig.GENERATION_CONFIG['max_output_tokens'] = settings.get('max_tokens', 100)
+                    AIConfig.GENERATION_CONFIG['top_p'] = settings.get('top_p', 0.8)
+                    
+                    # Загружаем промпты, но они не используются в новой версии
+                    if 'system_prompt' in settings:
+                        AIConfig.SYSTEM_PROMPT = settings['system_prompt']
+                    
                     AIConfig.CACHE_AI_RESPONSES = settings.get('cache_enabled', AIConfig.CACHE_AI_RESPONSES)
                     AIConfig.CACHE_DURATION = settings.get('cache_duration', AIConfig.CACHE_DURATION)
                     AIConfig.LOG_AI_REQUESTS = settings.get('logging_enabled', AIConfig.LOG_AI_REQUESTS)

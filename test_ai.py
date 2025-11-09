@@ -1,7 +1,7 @@
 """
 Скрипт для тестирования AI проверки ответов
 """
-from ai_checker import get_ai_checker
+from ai_checker_0 import get_ai_checker
 from ai_config import AIConfig
 import sys
 
