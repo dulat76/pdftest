@@ -679,6 +679,8 @@ def calculate_similarity(s1, s2):
 
 # Замените маршрут /check_answers в app.py на этот код:
 
+# Замените функцию check_answers в app.py на эту версию:
+
 @app.route('/check_answers', methods=['POST'])
 def check_answers():
     try:
@@ -697,6 +699,7 @@ def check_answers():
         if not os.path.exists(template_path):
             return jsonify({"success": False, "error": "Шаблон не найден"}), 404
 
+        # КРИТИЧНО: Явно указываем кодировку UTF-8 при чтении
         with open(template_path, 'r', encoding='utf-8') as f:
             template = json.load(f)
 
@@ -788,7 +791,14 @@ def check_answers():
                         is_correct = result_dict.get('is_correct', False)
                         checked_by_ai = True
                         ai_confidence = result_dict.get('confidence', 0.0)
+                        
+                        # КРИТИЧНО: Получаем explanation с правильной кодировкой
                         ai_explanation = result_dict.get('explanation', 'Нет объяснения от AI')
+                        
+                        # Убеждаемся что explanation в UTF-8
+                        if isinstance(ai_explanation, bytes):
+                            ai_explanation = ai_explanation.decode('utf-8')
+                        
                         check_method = "ai"
                         
                         if is_correct:
@@ -814,8 +824,9 @@ def check_answers():
                             log_file_path = os.path.join(Config.BASE_DIR, AIConfig.AI_LOG_FILE)
                             os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
                             
+                            # КРИТИЧНО: Явно указываем кодировку UTF-8 при записи
                             with open(log_file_path, 'a', encoding='utf-8') as log_f:
-                                log_f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
+                                log_f.write(json.dumps(log_entry, ensure_ascii=False, indent=None) + '\n')
 
                     except Exception as ai_err:
                         ai_error = str(ai_err)
@@ -846,8 +857,9 @@ def check_answers():
                             log_file_path = os.path.join(Config.BASE_DIR, AIConfig.AI_LOG_FILE)
                             os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
                             
+                            # КРИТИЧНО: UTF-8 кодировка
                             with open(log_file_path, 'a', encoding='utf-8') as log_f:
-                                log_f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
+                                log_f.write(json.dumps(log_entry, ensure_ascii=False, indent=None) + '\n')
 
             if is_correct:
                 correct_count += 1
@@ -965,22 +977,35 @@ def check_answers():
                     "error": f"Ошибка Google Sheets: {str(e)}"
                 }
 
-        return jsonify({
-            "success": True,
-            "correct_count": correct_count,
-            "total_count": total_count,
-            "percentage": percentage,
-            "details": detailed_results,
-            "sheets_result": sheets_result,
-            "ai_check_count": ai_check_count,
-            "ai_available": AI_AVAILABLE
-        })
+        # КРИТИЧНО: Формируем JSON ответ с ensure_ascii=False для правильной кодировки
+        return app.response_class(
+            response=json.dumps({
+                "success": True,
+                "correct_count": correct_count,
+                "total_count": total_count,
+                "percentage": percentage,
+                "details": detailed_results,
+                "sheets_result": sheets_result,
+                "ai_check_count": ai_check_count,
+                "ai_available": AI_AVAILABLE
+            }, ensure_ascii=False, indent=2),
+            status=200,
+            mimetype='application/json; charset=utf-8'
+        )
 
     except Exception as e:
         print(f"❌ Ошибка в check_answers: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
+        
+        return app.response_class(
+            response=json.dumps({
+                "success": False, 
+                "error": str(e)
+            }, ensure_ascii=False),
+            status=500,
+            mimetype='application/json; charset=utf-8'
+        )
 
 @app.route('/static/classes.json')
 def get_classes():

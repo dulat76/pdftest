@@ -1,6 +1,7 @@
 """
 Модуль для проверки ответов студентов с использованием ИИ
 Поддерживает несколько API: Groq, Google Gemini, HuggingFace
+ИСПРАВЛЕНА КОДИРОВКА UTF-8
 """
 
 import os
@@ -105,7 +106,7 @@ class AIAnswerChecker:
         
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json; charset=utf-8"
         }
         
         user_prompt = self._build_prompt(student_answer, correct_variants, question_context)
@@ -122,6 +123,7 @@ class AIAnswerChecker:
         
         try:
             response = requests.post(url, headers=headers, json=data, timeout=10)
+            response.encoding = 'utf-8'
             response.raise_for_status()
             
             result = response.json()
@@ -143,12 +145,11 @@ class AIAnswerChecker:
     def _build_gemini_request_body(self, student_answer: str, correct_variants: List[str],
                                    question_context: str, system_prompt: str,
                                    generation_config: Dict) -> Dict:
-        """Формирует тело запроса для Gemini API"""
+        """Формирует тело запроса для Gemini API с правильной кодировкой"""
         
         correct_answers_str = "\n".join([f"- {v}" for v in correct_variants])
         
-        # ВСЕГДА используем наш фиксированный промпт, игнорируя system_prompt
-        # чтобы избежать проблем с фигурными скобками в .format()
+        # ВСЕГДА используем наш фиксированный промпт
         user_prompt_text = f"""Проверь ответ студента. Верни ТОЛЬКО валидный JSON, без дополнительного текста.
 
 Вопрос/Контекст: {question_context or "Не указан"}
@@ -170,10 +171,10 @@ class AIAnswerChecker:
         
         # Более строгие настройки для JSON генерации
         json_generation_config = {
-            "temperature": 0.0,  # Максимальная детерминированность
+            "temperature": 0.0,
             "top_p": 0.8,
             "top_k": 10,
-            "max_output_tokens": 100,  # Меньше токенов для чистого JSON
+            "max_output_tokens": 100,
             "candidate_count": 1
         }
         
@@ -190,7 +191,7 @@ class AIAnswerChecker:
                           question_context: str = "",
                           system_prompt: Optional[str] = None,
                           model_name: Optional[str] = None) -> AICheckResult:
-        """Проверка через Google Gemini API"""
+        """Проверка через Google Gemini API с правильной обработкой кодировки"""
         from ai_config import AIConfig
 
         model_to_use = model_name or AIConfig.GEMINI_MODEL
@@ -203,9 +204,23 @@ class AIAnswerChecker:
         )
         
         try:
-            response = requests.post(url, json=data, timeout=15)
+            # КРИТИЧНО: Явно указываем кодировку UTF-8
+            headers = {
+                "Content-Type": "application/json; charset=utf-8"
+            }
+            
+            response = requests.post(
+                url, 
+                json=data, 
+                headers=headers,
+                timeout=15
+            )
+            
+            # КРИТИЧНО: Устанавливаем кодировку ответа
+            response.encoding = 'utf-8'
             response.raise_for_status()
             
+            # Получаем текст с правильной кодировкой
             result = response.json()
             
             # Проверяем наличие candidates
@@ -217,6 +232,7 @@ class AIAnswerChecker:
             
             content = result['candidates'][0]['content']['parts'][0]['text'].strip()
             
+            # Парсим JSON с правильной обработкой русских символов
             json_result = self._extract_json(content)
             
             return AICheckResult(
@@ -235,7 +251,10 @@ class AIAnswerChecker:
         """Проверка через HuggingFace API"""
         url = "https://api-inference.huggingface.co/models/facebook/bart-large-mnli"
         
-        headers = {"Authorization": f"Bearer {self.api_key}"}
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json; charset=utf-8"
+        }
         
         data = {
             "inputs": student_answer,
@@ -244,6 +263,7 @@ class AIAnswerChecker:
         
         try:
             response = requests.post(url, headers=headers, json=data, timeout=10)
+            response.encoding = 'utf-8'
             response.raise_for_status()
             
             result = response.json()
@@ -270,7 +290,7 @@ class AIAnswerChecker:
         
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json; charset=utf-8"
         }
         
         user_prompt = self._build_prompt(student_answer, correct_variants, question_context)
@@ -284,6 +304,7 @@ class AIAnswerChecker:
         
         try:
             response = requests.post(url, headers=headers, json=data, timeout=10)
+            response.encoding = 'utf-8'
             response.raise_for_status()
             
             result = response.json()
@@ -303,8 +324,12 @@ class AIAnswerChecker:
             return self._fallback_check(student_answer, correct_variants, error_message=str(e))
     
     def _extract_json(self, text: str) -> Dict:
-        """Извлечь JSON из текста с умной обработкой"""
+        """Извлечь JSON из текста с правильной обработкой UTF-8"""
         try:
+            # Убеждаемся что текст в UTF-8
+            if isinstance(text, bytes):
+                text = text.decode('utf-8')
+            
             # Убираем markdown форматирование и лишние пробелы
             text = text.replace('```json', '').replace('```', '').strip()
             
@@ -315,7 +340,7 @@ class AIAnswerChecker:
             if start != -1 and end != 0:
                 json_str = text[start:end]
                 
-                # Попытка парсинга
+                # Попытка парсинга (в Python 3.x json.loads автоматически работает с unicode)
                 try:
                     return json.loads(json_str)
                 except json.JSONDecodeError:
@@ -336,7 +361,7 @@ class AIAnswerChecker:
             # Последняя попытка - парсинг всего текста
             return json.loads(text)
             
-        except (json.JSONDecodeError, KeyError) as e:
+        except (json.JSONDecodeError, KeyError, UnicodeDecodeError) as e:
             print(f"⚠️ Ошибка парсинга JSON: {e}")
             print(f"📄 Исходный текст: {text[:200]}")
             
@@ -352,8 +377,8 @@ class AIAnswerChecker:
                 confidence_match = re.search(r'"?confidence"?\s*:\s*(\d+)', text)
                 confidence = int(confidence_match.group(1)) if confidence_match else 0
                 
-                # Пытаемся найти explanation
-                explanation_match = re.search(r'"?explanation"?\s*:\s*"([^"]*)"', text)
+                # Пытаемся найти explanation с учетом Unicode
+                explanation_match = re.search(r'"?explanation"?\s*:\s*"([^"]*)"', text, re.UNICODE)
                 explanation = explanation_match.group(1) if explanation_match else "Не удалось извлечь объяснение"
                 
                 print(f"✅ Извлечено через regex: correct={is_correct}, conf={confidence}")
