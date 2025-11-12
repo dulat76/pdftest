@@ -50,6 +50,9 @@ document.addEventListener('DOMContentLoaded', function() {
     loadSettings();
     loadStatistics();
     checkAIStatus();
+    
+    // Загружаем статистику каждые 30 секунд
+    setInterval(loadStatistics, 30000);
 });
 
 // Обновление значения порога схожести
@@ -285,7 +288,7 @@ async function clearCache() {
             const result = await response.json();
             
             if (result.success) {
-                showAlert('success', `Кэш очищен (${result.cleared_items} записей)`);
+                showAlert('success', `Кэш очищен (${result.cleared_count} записей)`);
                 loadStatistics();
             } else {
                 showAlert('error', 'Ошибка очистки кэша: ' + result.error);
@@ -360,14 +363,52 @@ async function loadStatistics() {
         const stats = await response.json();
         
         if (stats.success) {
+            // Основная статистика
             document.getElementById('totalChecks').textContent = stats.total_checks || 0;
             document.getElementById('aiChecks').textContent = stats.ai_checks || 0;
-            document.getElementById('cacheSize').textContent = stats.cache_size || 0;
             document.getElementById('successRate').textContent = (stats.success_rate || 0) + '%';
+            
+            // Статистика кэша
+            document.getElementById('cacheTotalEntries').textContent = stats.cache_total_entries || 0;
+            document.getElementById('cacheValidEntries').textContent = stats.cache_valid_entries || 0;
+            document.getElementById('cacheTotalUsage').textContent = stats.cache_total_usage || 0;
+            document.getElementById('cacheAvgConfidence').textContent = 
+                stats.cache_avg_confidence ? stats.cache_avg_confidence.toFixed(2) : '0.00';
+            
+            // Обновляем эффективность кэша
+            updateCacheEfficiency(stats);
         }
     } catch (error) {
         console.error('Ошибка загрузки статистики:', error);
     }
+}
+
+// Обновление эффективности кэша
+function updateCacheEfficiency(stats) {
+    const efficiencyElement = document.getElementById('cacheEfficiency');
+    if (!efficiencyElement) return;
+    
+    const totalUsage = stats.cache_total_usage || 0;
+    const validEntries = stats.cache_valid_entries || 0;
+    
+    let efficiencyText = 'Нет данных';
+    let efficiencyClass = 'neutral';
+    
+    if (totalUsage > 0 && validEntries > 0) {
+        const efficiency = (totalUsage / validEntries).toFixed(1);
+        efficiencyText = `${efficiency}x`;
+        
+        if (efficiency >= 2) {
+            efficiencyClass = 'good';
+        } else if (efficiency >= 1) {
+            efficiencyClass = 'neutral';
+        } else {
+            efficiencyClass = 'poor';
+        }
+    }
+    
+    efficiencyElement.textContent = efficiencyText;
+    efficiencyElement.className = `efficiency-badge ${efficiencyClass}`;
 }
 
 // Проверка статуса AI
@@ -439,6 +480,57 @@ async function loadUserInfo() {
         }
     } catch (error) {
         console.error('Ошибка загрузки информации о пользователе:', error);
+    }
+}
+
+// Оптимизация кэша
+async function optimizeCache() {
+    if (confirm('Оптимизировать кэш? Будут удалены устаревшие записи и пересчитаны индексы.')) {
+        try {
+            showAlert('info', '🔄 Оптимизация кэша...');
+            
+            // Очистка устаревших записей
+            const clearResponse = await fetch('/api/ai/cache/clear', {
+                method: 'POST'
+            });
+            
+            const clearResult = await clearResponse.json();
+            
+            if (clearResult.success) {
+                showAlert('success', `✅ Кэш оптимизирован! Удалено записей: ${clearResult.cleared_count}`);
+                loadStatistics();
+            } else {
+                showAlert('error', '❌ Ошибка оптимизации: ' + clearResult.error);
+            }
+        } catch (error) {
+            showAlert('error', '❌ Ошибка: ' + error.message);
+        }
+    }
+}
+
+// Экспорт статистики
+async function exportStats() {
+    try {
+        const response = await fetch('/api/ai/stats');
+        const stats = await response.json();
+        
+        if (stats.success) {
+            const dataStr = JSON.stringify(stats, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `ai-stats-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            showAlert('success', '📊 Статистика экспортирована');
+        }
+    } catch (error) {
+        showAlert('error', '❌ Ошибка экспорта: ' + error.message);
     }
 }
 

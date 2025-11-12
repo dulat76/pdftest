@@ -17,6 +17,12 @@ from flask import send_from_directory
 AI_AVAILABLE = False
 checker = None
 
+try:
+    from ai_cache import cache_manager
+    CACHE_MANAGER_AVAILABLE = True
+except ImportError:
+    CACHE_MANAGER_AVAILABLE = False
+
 # Функция для получения checker
 def get_ai_checker():
     """
@@ -29,8 +35,12 @@ def get_ai_checker():
     # Принудительно загружаем самые свежие настройки из файла
     AIConfig.load_from_file()
     
+    # Если checker уже создан, возвращаем его
+    if checker is not None:
+        return checker
+    
     try:
-        # Передаем ключ и модель из настроек напрямую
+        # Создаем новый экземпляр только если его нет
         checker = AIAnswerChecker(provider="gemini", api_key=AIConfig.GEMINI_API_KEY)
         AI_AVAILABLE = True
     except (ValueError, Exception) as e:
@@ -51,9 +61,9 @@ Config.create_directories()
 from ai_config import AIConfig
 AIConfig.load_from_file()
 
-LOGS_DIR = os.path.join(Config.BASE_DIR, 'logs')
-if not os.path.exists(LOGS_DIR):
-    os.makedirs(LOGS_DIR)
+#LOGS_DIR = os.path.join(Config.BASE_DIR, 'logs')
+#if not os.path.exists(LOGS_DIR):
+ #   os.makedirs(LOGS_DIR)
 
 
 def allowed_file(filename):
@@ -336,14 +346,6 @@ def ai_stats():
                     success_count = sum(1 for log in logs if log.get('success'))
                     stats['success_rate'] = round((success_count / len(logs)) * 100, 1)
         
-        # Размер кэша
-        try:
-            from ai_checker_0 import get_ai_checker
-            checker = get_ai_checker()
-            if hasattr(checker, 'cache') and checker.cache:
-                stats['cache_size'] = len(checker.cache)
-        except:
-            pass
         
         return jsonify({'success': True, **stats})
     
@@ -391,29 +393,6 @@ def clear_ai_logs():
                 pass
         
         return jsonify({'success': True, 'message': 'Логи очищены (создан бэкап)'})
-    
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/ai/cache/clear', methods=['POST'])
-@login_required
-def clear_ai_cache():
-    """Очистка кэша AI"""
-    try:
-        from ai_checker_0 import get_ai_checker
-        checker = get_ai_checker()
-        
-        cleared_items = 0
-        if hasattr(checker, 'cache') and checker.cache:
-            cleared_items = len(checker.cache)
-            checker.cache.clear()
-        
-        return jsonify({
-            'success': True,
-            'cleared_items': cleared_items,
-            'message': f'Очищено записей: {cleared_items}'
-        })
     
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -794,13 +773,16 @@ def check_answers():
                         
                         # КРИТИЧНО: Получаем explanation с правильной кодировкой
                         ai_explanation = result_dict.get('explanation', 'Нет объяснения от AI')
-                        
+
                         # Убеждаемся что explanation в UTF-8
-                        if isinstance(ai_explanation, bytes):
-                            ai_explanation = ai_explanation.decode('utf-8')
-                        
+                        try:
+                            if isinstance(ai_explanation, bytes):
+                                ai_explanation = ai_explanation.decode('utf-8')
+                        except UnicodeDecodeError:
+                            ai_explanation = "Не удалось декодировать объяснение"
+
                         check_method = "ai"
-                        
+
                         if is_correct:
                             ai_check_count += 1
 
@@ -1034,6 +1016,39 @@ def get_classes():
             json.dump(default_classes, f, ensure_ascii=False, indent=2)
 
         return jsonify(default_classes)
+
+@app.route('/api/ai/cache/stats')
+@login_required
+def ai_cache_stats():
+    """Статистика кэша"""
+    try:
+        if not CACHE_MANAGER_AVAILABLE:
+            return jsonify({'success': False, 'error': 'Менеджер кэша недоступен'})
+        
+        stats = cache_manager.get_cache_stats()
+        return jsonify({'success': True, 'stats': stats})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/ai/cache/clear', methods=['POST'])
+@login_required
+def clear_ai_cache():
+    """Очистка кэша AI"""
+    try:
+        if not CACHE_MANAGER_AVAILABLE:
+            return jsonify({'success': False, 'error': 'Менеджер кэша недоступен'})
+        
+        cleared_count = cache_manager.clear_expired_entries()
+        return jsonify({
+            'success': True,
+            'cleared_count': cleared_count,
+            'message': f'Очищено устаревших записей: {cleared_count}'
+        })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=Config.DEBUG)

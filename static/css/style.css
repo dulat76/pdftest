@@ -453,6 +453,28 @@ body {
     padding: 20px;
 }
 
+.efficiency-badge {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.efficiency-badge.good {
+    background: #d4edda;
+    color: #155724;
+}
+
+.efficiency-badge.neutral {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.efficiency-badge.poor {
+    background: #f8d7da;
+    color: #721c24;
+}
+
 /* ===== МОБИЛЬНАЯ ВЕРСИЯ ДЛЯ СТУДЕНТОВ ===== */
 @media (max-width: 768px) {
     .container {

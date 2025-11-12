@@ -11,4 +11,4 @@
   "cache_duration": 3600,
   "logging_enabled": true,
   "log_file": "logs/ai_checks.log"
-} 
+}

@@ -1,6 +1,6 @@
 """
 Модуль для проверки ответов студентов с использованием ИИ
-Поддерживает несколько API: Groq, Google Gemini, HuggingFace
+С ИНТЕГРАЦИЕЙ КЭШИРОВАНИЯ В POSTGRESQL
 ИСПРАВЛЕНА КОДИРОВКА UTF-8
 """
 
@@ -10,6 +10,14 @@ from typing import List, Dict, Optional
 import requests
 from dataclasses import dataclass
 
+# Импортируем менеджер кэша
+try:
+    from ai_cache import cache_manager
+    CACHE_AVAILABLE = True
+except ImportError:
+    CACHE_AVAILABLE = False
+    print("⚠️ Модуль кэширования недоступен")
+
 @dataclass
 class AICheckResult:
     """Результат проверки ответа через ИИ"""
@@ -17,14 +25,15 @@ class AICheckResult:
     confidence: float  # 0.0 - 1.0
     explanation: str
     ai_provider: str
+    from_cache: bool = False  # Новое поле: из кэша или нет
 
 
 class AIAnswerChecker:
-    """Класс для проверки ответов студентов с помощью ИИ"""
+    """Класс для проверки ответов студентов с помощью ИИ с кэшированием"""
     
-    def __init__(self, provider: str = "groq", api_key: Optional[str] = None):
+    def __init__(self, provider: str = "gemini", api_key: Optional[str] = None):
         """
-        Инициализация проверщика
+        Инициализация проверщика с кэшированием
         
         Args:
             provider: "groq", "gemini", "huggingface", или "cohere"
@@ -58,7 +67,7 @@ class AIAnswerChecker:
                      system_prompt: Optional[str] = None,
                      model_name: Optional[str] = None) -> AICheckResult:
         """
-        Проверить ответ студента с помощью ИИ
+        Проверить ответ студента с помощью ИИ с использованием кэша
         
         Args:
             student_answer: Ответ студента
@@ -68,18 +77,64 @@ class AIAnswerChecker:
             model_name: Имя модели для использования (опционально)
         
         Returns:
-            AICheckResult с результатом проверки
+            AICheckResult с результатом проверки (может быть из кэша)
         """
+        from ai_config import AIConfig
+        
+        # Используем модель из конфига если не указана
+        model_to_use = model_name or AIConfig.GEMINI_MODEL
+        
+        # 1. ПРОВЕРКА КЭША (если доступен и включен)
+        if CACHE_AVAILABLE and AIConfig.CACHE_AI_RESPONSES:
+            cached_result = cache_manager.get_cached_result(
+                student_answer=student_answer,
+                correct_variants=correct_variants,
+                question_context=question_context,
+                ai_model=model_to_use
+            )
+            
+            if cached_result:
+                print(f"✅ Использован кэшированный ответ для: '{student_answer}'")
+                return AICheckResult(
+                    is_correct=cached_result['is_correct'],
+                    confidence=cached_result['confidence'],
+                    explanation=cached_result['explanation'],
+                    ai_provider=cached_result['ai_provider'],
+                    from_cache=True
+                )
+        
+        # 2. ВЫЗОВ ИИ (если не найдено в кэше)
         if self.provider == "groq":
-            return self._check_with_groq(student_answer, correct_variants, question_context, system_prompt)
+            result = self._check_with_groq(student_answer, correct_variants, question_context, system_prompt)
         elif self.provider == "gemini":
-            return self._check_with_gemini(student_answer, correct_variants, question_context, system_prompt, model_name)
+            result = self._check_with_gemini(student_answer, correct_variants, question_context, system_prompt, model_to_use)
         elif self.provider == "huggingface":
-            return self._check_with_huggingface(student_answer, correct_variants, question_context)
+            result = self._check_with_huggingface(student_answer, correct_variants, question_context)
         elif self.provider == "cohere":
-            return self._check_with_cohere(student_answer, correct_variants, question_context, system_prompt)
+            result = self._check_with_cohere(student_answer, correct_variants, question_context, system_prompt)
         else:
             raise ValueError(f"Неподдерживаемый провайдер: {self.provider}")
+        
+        # 3. СОХРАНЕНИЕ В КЭШ (если успешно и кэш доступен)
+        if CACHE_AVAILABLE and AIConfig.CACHE_AI_RESPONSES and not result.from_cache:
+            cache_saved = cache_manager.save_to_cache(
+                student_answer=student_answer,
+                correct_variants=correct_variants,
+                question_context=question_context,
+                ai_provider=result.ai_provider,
+                ai_model=model_to_use,
+                is_correct=result.is_correct,
+                confidence=result.confidence,
+                explanation=result.explanation,
+                ttl=AIConfig.CACHE_DURATION
+            )
+            
+            if cache_saved:
+                print(f"💾 Ответ сохранен в кэш: '{student_answer}'")
+            else:
+                print(f"⚠️ Не удалось сохранить в кэш: '{student_answer}'")
+        
+        return result
     
     def _build_prompt(self, student_answer: str, correct_variants: List[str], 
                      question_context: str = "") -> str:
@@ -135,7 +190,8 @@ class AIAnswerChecker:
                 is_correct=json_result.get('is_correct', False),
                 confidence=json_result.get('confidence', 0) / 100.0,
                 explanation=json_result.get('explanation', 'Не удалось получить объяснение'),
-                ai_provider='groq'
+                ai_provider='groq',
+                from_cache=False
             )
             
         except Exception as e:
@@ -239,7 +295,8 @@ class AIAnswerChecker:
                 is_correct=json_result.get('is_correct', False),
                 confidence=json_result.get('confidence', 0) / 100.0,
                 explanation=json_result.get('explanation', 'Нет объяснения от AI'),
-                ai_provider='gemini'
+                ai_provider='gemini',
+                from_cache=False
             )
             
         except Exception as e:
@@ -275,7 +332,8 @@ class AIAnswerChecker:
                 is_correct=is_correct,
                 confidence=confidence,
                 explanation=f"Классификация: {result['labels'][0]} ({confidence*100:.1f}%)",
-                ai_provider='huggingface'
+                ai_provider='huggingface',
+                from_cache=False
             )
             
         except Exception as e:
@@ -316,7 +374,8 @@ class AIAnswerChecker:
                 is_correct=json_result.get('is_correct', False),
                 confidence=json_result.get('confidence', 0) / 100.0,
                 explanation=json_result.get('explanation', 'Не удалось получить объяснение'),
-                ai_provider='cohere'
+                ai_provider='cohere',
+                from_cache=False
             )
             
         except Exception as e:
@@ -410,14 +469,16 @@ class AIAnswerChecker:
                     is_correct=True,
                     confidence=1.0,
                     explanation="Точное совпадение (fallback)",
-                    ai_provider='fallback'
+                    ai_provider='fallback',
+                    from_cache=False
                 )
         
         return AICheckResult(
             is_correct=False,
             confidence=0.0,
             explanation=f"Fallback: {error_message}",
-            ai_provider='fallback'
+            ai_provider='fallback',
+            from_cache=False
         )
     
     def batch_check_answers(self, answers_data: List[Dict]) -> List[AICheckResult]:
@@ -441,7 +502,7 @@ def quick_check_answer(student_answer: str,
                       correct_variants: List[str],
                       provider: str = "groq",
                       api_key: Optional[str] = None) -> bool:
-    """Быстрая проверка одного ответа"""
+    """Быстрая проверка одного ответа с кэшированием"""
     try:
         checker = AIAnswerChecker(provider=provider, api_key=api_key)
         result = checker.check_answer(student_answer, correct_variants)

@@ -1,6 +1,7 @@
 """
 Модуль для проверки ответов студентов с использованием ИИ
 Поддерживает несколько API: Groq, Google Gemini, HuggingFace
+ИСПРАВЛЕНА КОДИРОВКА UTF-8
 """
 
 import os
@@ -30,7 +31,6 @@ class AIAnswerChecker:
             api_key: API ключ (если None, берется из переменных окружения)
         """
         self.provider = provider.lower()
-        # Приоритет: переданный ключ, затем переменная окружения
         self.api_key = api_key if api_key else self._get_api_key_from_env()
         
         if not self.api_key:
@@ -81,6 +81,23 @@ class AIAnswerChecker:
         else:
             raise ValueError(f"Неподдерживаемый провайдер: {self.provider}")
     
+    def _build_prompt(self, student_answer: str, correct_variants: List[str], 
+                     question_context: str = "") -> str:
+        """Построить промпт для проверки ответа"""
+        correct_answers_str = "\n".join([f"- {v}" for v in correct_variants])
+        
+        return f"""Проверь, является ли ответ студента правильным.
+
+Контекст вопроса: {question_context or "Не указан"}
+
+Правильные варианты ответа:
+{correct_answers_str}
+
+Ответ студента: "{student_answer}"
+
+Верни ТОЛЬКО JSON в формате:
+{{"is_correct": true/false, "confidence": число от 0 до 100, "explanation": "краткое пояснение"}}"""
+    
     def _check_with_groq(self, student_answer: str, correct_variants: List[str], 
                         question_context: str = "",
                         system_prompt: Optional[str] = None) -> AICheckResult:
@@ -89,30 +106,29 @@ class AIAnswerChecker:
         
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json; charset=utf-8"
         }
         
-        # Для Groq оставим старую логику, так как он хорошо с ней работает
-        user_prompt = f"Правильные ответы: {correct_variants}. Ответ студента: '{student_answer}'. Верно или нет?"
+        user_prompt = self._build_prompt(student_answer, correct_variants, question_context)
         
         data = {
-            "model": "llama-3.1-8b-instant",  # Быстрая модель
+            "model": "llama-3.1-8b-instant",
             "messages": [
                 {"role": "system", "content": system_prompt or "Ты - эксперт по проверке ответов. Всегда отвечай только валидным JSON."},
                 {"role": "user", "content": user_prompt}
             ],
-            "temperature": 0.1,  # Низкая температура для стабильности
+            "temperature": 0.1,
             "max_tokens": 200
         }
         
         try:
             response = requests.post(url, headers=headers, json=data, timeout=10)
+            response.encoding = 'utf-8'
             response.raise_for_status()
             
             result = response.json()
             content = result['choices'][0]['message']['content'].strip()
             
-            # Извлекаем JSON из ответа
             json_result = self._extract_json(content)
             
             return AICheckResult(
@@ -124,30 +140,49 @@ class AIAnswerChecker:
             
         except Exception as e:
             print(f"Ошибка Groq API: {e}")
-            # Fallback на простую проверку
-            return self._fallback_check(student_answer, correct_variants)
+            return self._fallback_check(student_answer, correct_variants, error_message=str(e))
     
     def _build_gemini_request_body(self, student_answer: str, correct_variants: List[str],
                                    question_context: str, system_prompt: str,
                                    generation_config: Dict) -> Dict:
-        """Формирует тело запроса для Gemini API по новому формату."""
+        """Формирует тело запроса для Gemini API с правильной кодировкой"""
         
-        # Формируем строку с правильными ответами
         correct_answers_str = "\n".join([f"- {v}" for v in correct_variants])
         
-        # Заполняем шаблон промпта
-        user_prompt_text = system_prompt.format(
-            question_context=question_context or "Контекст не указан",
-            correct_answers=correct_answers_str,
-            student_answer=student_answer
-        )
+        # ВСЕГДА используем наш фиксированный промпт
+        user_prompt_text = f"""Проверь ответ студента. Верни ТОЛЬКО валидный JSON, без дополнительного текста.
+
+Вопрос/Контекст: {question_context or "Не указан"}
+
+Правильные ответы:
+{correct_answers_str}
+
+Ответ студента: "{student_answer}"
+
+Критерии:
+- Учитывай синонимы, опечатки, падежи
+- Будь лоялен если суть верна
+- VR = virtual reality (разные форматы допустимы)
+- Истина/Верно/True - синонимы
+- Ложь/Не верно/False - синонимы
+
+Формат ответа (только JSON, ничего больше):
+{{"is_correct": true, "confidence": 95, "explanation": "краткое пояснение"}}"""
         
-        # Собираем тело запроса
+        # Более строгие настройки для JSON генерации
+        json_generation_config = {
+            "temperature": 0.0,
+            "top_p": 0.8,
+            "top_k": 10,
+            "max_output_tokens": 100,
+            "candidate_count": 1
+        }
+        
         request_body = {
             "contents": [{
                 "parts": [{"text": user_prompt_text}]
             }],
-            "generationConfig": generation_config
+            "generationConfig": json_generation_config
         }
         
         return request_body
@@ -156,14 +191,12 @@ class AIAnswerChecker:
                           question_context: str = "",
                           system_prompt: Optional[str] = None,
                           model_name: Optional[str] = None) -> AICheckResult:
-        """Проверка через Google Gemini API"""
+        """Проверка через Google Gemini API с правильной обработкой кодировки"""
         from ai_config import AIConfig
 
-        # Динамически формируем URL с правильным именем модели
         model_to_use = model_name or AIConfig.GEMINI_MODEL
         url = f"https://generativelanguage.googleapis.com/v1/models/{model_to_use}:generateContent?key={self.api_key}"
         
-        # Используем новый метод для формирования тела запроса
         data = self._build_gemini_request_body(
             student_answer, correct_variants, question_context,
             system_prompt or AIConfig.VERIFICATION_PROMPT_TEMPLATE,
@@ -171,18 +204,41 @@ class AIAnswerChecker:
         )
         
         try:
-            response = requests.post(url, json=data, timeout=10)
+            # КРИТИЧНО: Явно указываем кодировку UTF-8
+            headers = {
+                "Content-Type": "application/json; charset=utf-8"
+            }
+            
+            response = requests.post(
+                url, 
+                json=data, 
+                headers=headers,
+                timeout=15
+            )
+            
+            # КРИТИЧНО: Устанавливаем кодировку ответа
+            response.encoding = 'utf-8'
             response.raise_for_status()
             
+            # Получаем текст с правильной кодировкой
             result = response.json()
+            
+            # Проверяем наличие candidates
+            if 'candidates' not in result or not result['candidates']:
+                error_msg = "Gemini не вернул ответ"
+                if 'promptFeedback' in result:
+                    error_msg += f": {result['promptFeedback']}"
+                raise Exception(error_msg)
+            
             content = result['candidates'][0]['content']['parts'][0]['text'].strip()
             
+            # Парсим JSON с правильной обработкой русских символов
             json_result = self._extract_json(content)
             
             return AICheckResult(
                 is_correct=json_result.get('is_correct', False),
                 confidence=json_result.get('confidence', 0) / 100.0,
-                explanation=json_result.get('explanation', 'Не удалось получить объяснение'),
+                explanation=json_result.get('explanation', 'Нет объяснения от AI'),
                 ai_provider='gemini'
             )
             
@@ -193,13 +249,12 @@ class AIAnswerChecker:
     def _check_with_huggingface(self, student_answer: str, correct_variants: List[str],
                                question_context: str = "") -> AICheckResult:
         """Проверка через HuggingFace API"""
-        # Используем модель для классификации текста
         url = "https://api-inference.huggingface.co/models/facebook/bart-large-mnli"
         
-        headers = {"Authorization": f"Bearer {self.api_key}"}
-        
-        # Формируем гипотезы для проверки
-        hypothesis = f"Ответ '{student_answer}' эквивалентен одному из: {', '.join(correct_variants)}"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json; charset=utf-8"
+        }
         
         data = {
             "inputs": student_answer,
@@ -208,11 +263,11 @@ class AIAnswerChecker:
         
         try:
             response = requests.post(url, headers=headers, json=data, timeout=10)
+            response.encoding = 'utf-8'
             response.raise_for_status()
             
             result = response.json()
             
-            # Анализируем результат
             is_correct = result['labels'][0] == 'correct'
             confidence = result['scores'][0]
             
@@ -235,7 +290,7 @@ class AIAnswerChecker:
         
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json; charset=utf-8"
         }
         
         user_prompt = self._build_prompt(student_answer, correct_variants, question_context)
@@ -249,6 +304,7 @@ class AIAnswerChecker:
         
         try:
             response = requests.post(url, headers=headers, json=data, timeout=10)
+            response.encoding = 'utf-8'
             response.raise_for_status()
             
             result = response.json()
@@ -268,25 +324,80 @@ class AIAnswerChecker:
             return self._fallback_check(student_answer, correct_variants, error_message=str(e))
     
     def _extract_json(self, text: str) -> Dict:
-        """Извлечь JSON из текста"""
+        """Извлечь JSON из текста с правильной обработкой UTF-8"""
         try:
-            # Умный поиск JSON: находим первую '{' и последнюю '}'
+            # Убеждаемся что текст в UTF-8
+            if isinstance(text, bytes):
+                text = text.decode('utf-8')
+            
+            # Убираем markdown форматирование и лишние пробелы
+            text = text.replace('```json', '').replace('```', '').strip()
+            
+            # Умный поиск JSON блока
             start = text.find('{')
             end = text.rfind('}') + 1
             
             if start != -1 and end != 0:
                 json_str = text[start:end]
-                return json.loads(json_str)
+                
+                # Попытка парсинга (в Python 3.x json.loads автоматически работает с unicode)
+                try:
+                    return json.loads(json_str)
+                except json.JSONDecodeError:
+                    # Если не получилось, пробуем исправить распространенные ошибки
+                    
+                    # 1. Заменяем одинарные кавычки на двойные
+                    json_str = json_str.replace("'", '"')
+                    
+                    # 2. Убираем trailing commas
+                    import re
+                    json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
+                    
+                    # 3. Исправляем булевы значения
+                    json_str = json_str.replace('True', 'true').replace('False', 'false')
+                    
+                    return json.loads(json_str)
             
-            # Если не нашли, пробуем парсить весь текст как есть
+            # Последняя попытка - парсинг всего текста
             return json.loads(text)
-        except json.JSONDecodeError:
-            # Если не удалось распарсить, возвращаем дефолтные значения
-            return {
-                "is_correct": False,
-                "confidence": 0,
-                "explanation": f"Не удалось распознать JSON из ответа AI: '{text}'"
-            }
+            
+        except (json.JSONDecodeError, KeyError, UnicodeDecodeError) as e:
+            print(f"⚠️ Ошибка парсинга JSON: {e}")
+            print(f"📄 Исходный текст: {text[:200]}")
+            
+            # Умный fallback - извлекаем данные regex
+            try:
+                import re
+                
+                # Пытаемся найти is_correct
+                is_correct_match = re.search(r'"?is_correct"?\s*:\s*(true|false)', text, re.IGNORECASE)
+                is_correct = is_correct_match.group(1).lower() == 'true' if is_correct_match else False
+                
+                # Пытаемся найти confidence
+                confidence_match = re.search(r'"?confidence"?\s*:\s*(\d+)', text)
+                confidence = int(confidence_match.group(1)) if confidence_match else 0
+                
+                # Пытаемся найти explanation с учетом Unicode
+                explanation_match = re.search(r'"?explanation"?\s*:\s*"([^"]*)"', text, re.UNICODE)
+                explanation = explanation_match.group(1) if explanation_match else "Не удалось извлечь объяснение"
+                
+                print(f"✅ Извлечено через regex: correct={is_correct}, conf={confidence}")
+                
+                return {
+                    "is_correct": is_correct,
+                    "confidence": confidence,
+                    "explanation": explanation
+                }
+                
+            except Exception as regex_error:
+                print(f"❌ Regex fallback не сработал: {regex_error}")
+                
+                # Полный fallback
+                return {
+                    "is_correct": False,
+                    "confidence": 0,
+                    "explanation": f"Не удалось распознать ответ AI. Оригинал: {text[:100]}..."
+                }
     
     def _fallback_check(self, student_answer: str, correct_variants: List[str], 
                         error_message: str = "Нет точного совпадения") -> AICheckResult:
@@ -304,7 +415,7 @@ class AIAnswerChecker:
         
         return AICheckResult(
             is_correct=False,
-            confidence=0.8,
+            confidence=0.0,
             explanation=f"Fallback: {error_message}",
             ai_provider='fallback'
         )
@@ -312,15 +423,6 @@ class AIAnswerChecker:
     def batch_check_answers(self, answers_data: List[Dict]) -> List[AICheckResult]:
         """
         Проверить несколько ответов одновременно
-        
-        Args:
-            answers_data: Список словарей с ключами:
-                - student_answer: str
-                - correct_variants: List[str]
-                - question_context: str (опционально)
-        
-        Returns:
-            Список результатов проверки
         """
         results = []
         
@@ -335,77 +437,16 @@ class AIAnswerChecker:
         return results
 
 
-# Вспомогательная функция для быстрой проверки
 def quick_check_answer(student_answer: str, 
                       correct_variants: List[str],
                       provider: str = "groq",
                       api_key: Optional[str] = None) -> bool:
-    """
-    Быстрая проверка одного ответа
-    
-    Returns:
-        True если ответ правильный, False если нет
-    """
+    """Быстрая проверка одного ответа"""
     try:
         checker = AIAnswerChecker(provider=provider, api_key=api_key)
         result = checker.check_answer(student_answer, correct_variants)
         return result.is_correct and result.confidence > 0.5
     except Exception as e:
         print(f"Ошибка при проверке ответа: {e}")
-        # Fallback на простую проверку
         student_lower = student_answer.strip().lower()
         return any(student_lower == v.strip().lower() for v in correct_variants)
-
-
-if __name__ == "__main__":
-    # Пример использования
-    print("=== Тестирование AI Answer Checker ===\n")
-    
-    # Тестовые данные
-    test_cases = [
-        {
-            "student_answer": "голубой",
-            "correct_variants": ["синий", "blue"],
-            "expected": True
-        },
-        {
-            "student_answer": "двадцать пять",
-            "correct_variants": ["25"],
-            "expected": True
-        },
-        {
-            "student_answer": "сжатие файлов",
-            "correct_variants": ["архивация", "компрессия"],
-            "expected": True
-        },
-        {
-            "student_answer": "Лондон",
-            "correct_variants": ["Париж"],
-            "expected": False
-        }
-    ]
-    
-    try:
-        checker = AIAnswerChecker(provider="groq")  # Измените на нужный провайдер
-        
-        for i, test in enumerate(test_cases, 1):
-            print(f"Тест {i}:")
-            print(f"  Ответ студента: {test['student_answer']}")
-            print(f"  Правильные варианты: {test['correct_variants']}")
-            
-            result = checker.check_answer(
-                test['student_answer'],
-                test['correct_variants']
-            )
-            
-            print(f"  Результат: {'✅ Правильно' if result.is_correct else '❌ Неправильно'}")
-            print(f"  Уверенность: {result.confidence*100:.1f}%")
-           # print(f "  Объяснение: {result.explanation}")
-            print(f"  Объяснение: {result.explanation}")
-            print(f"  Провайдер: {result.ai_provider}")
-            print(f"  Ожидалось: {'✅' if test['expected'] else '❌'}")
-            print()
-            
-    except Exception as e:
-        print(f"Ошибка: {e}")
-        print("\nУстановите API ключ в переменной окружения GROQ_API_KEY")
