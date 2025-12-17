@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Выполнение задания</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        /* Инлайн стили для критически важных мобильных элементов */
+        .mobile-only { display: none; }
+        @media (max-width: 768px) {
+            .desktop-only { display: none; }
+            .mobile-only { display: block; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>Выполнение задания</h1>
+            <div class="mobile-only" style="font-size: 0.9rem; opacity: 0.8;">
+                 Мобильная версия
+            </div>
+        </header>
+
+        <div class="student-form" id="studentForm">
+            <h2>Введите ваши данные</h2>
+
+            <div class="form-group">
+                <label for="templateSelect">Выберите задание:</label>
+                <select id="templateSelect" required class="select">
+                    <option value="">Выберите задание...</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="studentName">ФИО:</label>
+                <input type="text" id="studentName" required class="input" placeholder="Иванов Иван Иванович">
+            </div>
+            
+            <div class="form-group">
+                <label for="studentClass">Класс:</label>
+                <select id="studentClass" required class="select">
+                    <option value="">Выберите класс...</option>
+                </select>
+            </div>
+
+            
+
+            <button onclick="startTest()" class="btn btn-large">Начать выполнение</button>
+            
+            <div class="mobile-only" style="margin-top: 20px; padding: 10px; background: #f8f9fa; border-radius: 5px; font-size: 0.8rem;">
+                <strong> Подсказка:</strong> Для удобства работы поверните устройство в альбомную ориентацию
+            </div>
+        </div>
+
+        <div class="test-area" id="testArea" style="display: none;">
+            <div class="test-header">
+                <div class="student-info">
+                    <span id="displayName"></span> | <span id="displayClass"></span>
+                </div>
+                <div class="progress">
+                    Заполнено: <span id="progress">0</span> из <span id="totalFields">0</span>
+                </div>
+            </div>
+
+            <!-- Мобильная навигация -->
+            <div class="page-navigation" id="pageNavigation" style="display: none;">
+                <button onclick="prevPage()" id="prevBtn" class="btn">← Назад</button>
+                <span id="pageInfo">1 / 1</span>
+                <button onclick="nextPage()" id="nextBtn" class="btn">Вперед →</button>
+            </div>
+
+            <!-- Контейнер для документа с возможностью скролла -->
+            <div style="overflow: auto; max-width: 100%;">
+                <div id="documentViewer"></div>
+            </div>
+
+            <div class="test-controls">
+                <button onclick="checkAnswers()" class="btn btn-large" id="submitBtn">✅ Завершить и проверить</button>
+                <button onclick="resetTest()" class="btn"> Начать заново</button>
+                
+                <div class="mobile-only" style="text-align: center; margin-top: 10px; font-size: 0.8rem; color: #666;">
+                     Для увеличения используйте масштабирование двумя пальцами
+                </div>
+            </div>
+        </div>
+
+        <div class="results" id="results" style="display: none;">
+            <h2>Результаты</h2>
+            <div class="score">
+                <div class="score-circle">
+                    <span id="scorePercent">0%</span>
+                </div>
+                <div class="score-details">
+                    <p>Правильных ответов: <span id="correctCount">0</span> из <span id="totalCount">0</span></p>
+                    <p id="sheetsStatus"></p>
+                </div>
+            </div>
+            
+            <div class="answer-review" id="answerReview">
+                <!-- Здесь будет детальный разбор ответов -->
+            </div>
+
+            <button onclick="resetTest()" class="btn"> Выполнить еще раз</button>
+            <button onclick="window.location.href='/student'" class="btn" style="margin-top: 10px;"> Выбрать другое задание</button>
+        </div>
+    </div>
+
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <p id="modalText"></p>
+            <button onclick="document.getElementById('modal').style.display='none'" class="btn" style="margin-top: 15px;">OK</button>
+        </div>
+    </div>
+
+    <script src="/static/js/student.js"></script>
+</body>
+</html>

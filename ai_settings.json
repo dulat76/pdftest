@@ -1,0 +1,14 @@
+{
+  "ai_enabled": true,
+  "similarity_threshold": 0.8,
+  "api_key": "AIzaSyB3b0OZunDascOfvHDLqJydDfN56ml1SnY",
+  "ai_model": "gemini-2.0-flash",
+  "temperature": 0.1,
+  "max_tokens": 200,
+  "top_p": 0.8,
+  "system_prompt": "Ты - эксперт по проверке ответов студентов. Твоя задача - определить, является ли ответ студента ВЕРНЫМ или НЕВЕРНЫМ.\n\nКРИТЕРИИ ПРОВЕРКИ:\n- Учитывай синонимы, опечатки, падежи.\n- Будь лоялен, если суть ответа верна.\n- Отвергай только если ответ ЯВНО неправильный по смыслу.\n\nВопрос/Задание: {question_context}\n\nЭталонные правильные ответы:\n{correct_answers}\n\nОтвет ученика:\n\"{student_answer}\"\n\nОтветь СТРОГО в формате JSON, без каких-либо других слов: {\"is_correct\": true/false, \"confidence\": число от 0 до 100, \"explanation\": \"краткое пояснение\"}.",
+  "cache_enabled": true,
+  "cache_duration": 3600,
+  "logging_enabled": true,
+  "log_file": "logs/ai_checks.log"
+} 

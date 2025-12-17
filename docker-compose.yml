@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: pdftest_db
+    environment:
+      POSTGRES_DB: pdftest
+      POSTGRES_USER: pdftest_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pdftest_user -d pdftest"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pdftest_network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: pdftest_redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pdftest_network
+
+  # Flask Application
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pdftest_web
+    environment:
+      - DATABASE_URL=postgresql://pdftest_user:${DB_PASSWORD:-changeme}@db:5432/pdftest
+      - REDIS_URL=redis://redis:6379/0
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - DEBUG=False
+    volumes:
+      - ./uploads:/app/uploads
+      - ./templates_json:/app/templates_json
+      - ./credentials:/app/credentials
+      - ./logs:/app/logs
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - pdftest_network
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy (optional, for production)
+  nginx:
+    image: nginx:alpine
+    container_name: pdftest_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - web
+    networks:
+      - pdftest_network
+    restart: unless-stopped
+    profiles:
+      - production
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  pdftest_network:
+    driver: bridge

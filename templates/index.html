@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Система Интерактивного Тестирования</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --text-color: #333;
+            --bg-color: #f4f7f6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            padding: 50px 40px;
+            max-width: 600px;
+            width: 100%;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .container::before {
+            content: '';
+            position: absolute;
+            top: -10px;
+            left: -10px;
+            right: -10px;
+            height: 50px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        }
+
+        .header {
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text-color);
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 16px;
+            color: #777;
+        }
+
+        .role-selection {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .role-btn {
+            display: block;
+            text-decoration: none;
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            background-size: 200% auto;
+        }
+
+        .role-btn:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .teacher-btn {
+            background-image: linear-gradient(to right, #667eea 0%, #764ba2 51%, #667eea 100%);
+        }
+
+        .student-btn {
+            background-image: linear-gradient(to right, #3498db 0%, #2980b9 51%, #3498db 100%);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>Система Интерактивного Тестирования</h1>
+        <p>Пожалуйста, выберите вашу роль для продолжения</p>
+    </div>
+
+    <div class="role-selection">
+        <a href="{{ url_for('login') }}" class="role-btn teacher-btn">Я — Учитель</a>
+        <a href="{{ url_for('student') }}" class="role-btn student-btn">Я — Ученик</a>
+    </div>
+</div>
+
+</body>
+</html>
+
