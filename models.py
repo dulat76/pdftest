@@ -1,6 +1,6 @@
 """Database models using SQLAlchemy."""
-from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Text, Float, Boolean, DateTime, JSON
+from datetime import datetime, date
+from sqlalchemy import create_engine, Column, Integer, String, Text, Float, Boolean, DateTime, Date, JSON, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
@@ -11,23 +11,37 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Database URL from environment
-DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://flask_user:flask_password123@185.22.64.9:5432/flask_db')
+# По умолчанию используем локальную SQLite БД для разработки
+# Если нужен PostgreSQL, установите DATABASE_URL в .env
+default_db = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'local_dev.db')
+DATABASE_URL = os.getenv('DATABASE_URL', f'sqlite:///{default_db}')
 DB_SCHEMA = os.getenv('DB_SCHEMA', 'public')
 
 # Create engine with connection pooling
-engine = create_engine(
-    DATABASE_URL,
-    echo=False,
-    poolclass=QueuePool,
-    pool_size=10,
-    max_overflow=20,
-    pool_timeout=30,
-    pool_recycle=3600,
-    pool_pre_ping=True,
-    connect_args={
-        "options": f"-c search_path={DB_SCHEMA},public" if DB_SCHEMA != 'public' else {}
-    }
-)
+# Для SQLite используем другие настройки
+if DATABASE_URL.startswith('sqlite'):
+    engine = create_engine(
+        DATABASE_URL,
+        echo=False,
+        connect_args={"check_same_thread": False}
+    )
+else:
+    # Для PostgreSQL
+    connect_args = {}
+    if DB_SCHEMA != 'public':
+        connect_args["options"] = f"-c search_path={DB_SCHEMA},public"
+    
+    engine = create_engine(
+        DATABASE_URL,
+        echo=False,
+        poolclass=QueuePool,
+        pool_size=10,
+        max_overflow=20,
+        pool_timeout=30,
+        pool_recycle=3600,
+        pool_pre_ping=True,
+        connect_args=connect_args
+    )
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -46,6 +60,16 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
+    
+    # Новые поля для учителей
+    role = Column(String(20), nullable=False, default='teacher', index=True)  # 'superuser' или 'teacher'
+    city = Column(String(100), nullable=True)
+    city_code = Column(String(20), nullable=True)
+    school = Column(String(200), nullable=True)
+    school_code = Column(String(50), nullable=True)
+    expiration_date = Column(Date, nullable=True)
+    max_tests_limit = Column(Integer, nullable=True)  # Лимит на количество тестов
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -61,9 +85,52 @@ class Template(Base):
     fields = Column(JSON, nullable=False)  # Store fields as JSON
     images = Column(JSON, nullable=True)   # Store image references
     created_by = Column(Integer, nullable=True)  # Foreign key to users
+    
+    # Новые поля для уникальных ссылок
+    topic = Column(String(200), nullable=True)  # Название темы теста
+    created_by_username = Column(String(100), nullable=True, index=True)  # Логин учителя
+    topic_slug = Column(String(200), nullable=True)  # URL-friendly версия темы
+    is_public = Column(Boolean, default=True)  # Публичный ли тест
+    access_count = Column(Integer, default=0)  # Количество прохождений
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    is_active = Column(Boolean, default=True)
+    is_active = Column(Boolean, default=True, index=True)
+    
+    # Новые поля для класса и предмета
+    class_number = Column(Integer, nullable=True)  # Класс (1-11)
+    subject_id = Column(Integer, nullable=True, index=True)  # Foreign key to subjects
+    
+    # Уникальный индекс на (created_by_username, subject_id, topic_slug)
+    __table_args__ = (
+        Index('idx_username_subject_topic', 'created_by_username', 'subject_id', 'topic_slug', unique=True),
+    )
+
+
+class Subject(Base):
+    """Subject model for school subjects."""
+    __tablename__ = 'subjects'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False, unique=True)  # Название предмета
+    name_slug = Column(String(200), nullable=False, unique=True, index=True)  # URL-friendly версия
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Subject(Base):
+    """Subject model for school subjects."""
+    __tablename__ = 'subjects'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False, unique=True)  # Название предмета
+    name_slug = Column(String(200), nullable=False, unique=True, index=True)  # URL-friendly версия
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class StudentResult(Base):
@@ -114,6 +181,21 @@ class SystemMetric(Base):
     metric_unit = Column(String(50), nullable=True)
     tags = Column(JSON, nullable=True)  # Additional metadata
     recorded_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class AuditLog(Base):
+    """Audit log for tracking admin actions."""
+    __tablename__ = 'audit_logs'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)  # ID пользователя, выполнившего действие
+    username = Column(String(100), nullable=True)  # Логин для удобства
+    action = Column(String(50), nullable=False, index=True)  # create_teacher, update_teacher, delete_teacher, create_test, etc.
+    target_type = Column(String(50), nullable=True)  # teacher, test
+    target_id = Column(Integer, nullable=True)  # ID объекта
+    details = Column(JSON, nullable=True)  # Детали действия
+    ip_address = Column(String(45), nullable=True)  # IPv6 compatible
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 # Database helper functions

@@ -1,91 +1,179 @@
 import os
-from datetime import datetime
-import gspread
-from google.oauth2.service_account import Credentials
-from flask import session, redirect, url_for, request # Импортируем для декоратора
+from datetime import datetime, date
+from werkzeug.security import check_password_hash, generate_password_hash
+from flask import session, redirect, url_for, request
 from config import Config
 from functools import wraps
+from models import SessionLocal, User
 
 class AuthManager:
-    """Менеджер авторизации, использующий Google Sheets для данных пользователей."""
+    """Менеджер авторизации, использующий PostgreSQL для данных пользователей."""
     
     def __init__(self):
-        # Инициализация gspread клиента
-        self.client = None
-        self.sheet = None
-        
-        # 🔑 1. Определяем путь к локальному файлу credentials.json
-        # Используем абсолютный путь из config.py
-        self.creds_path = os.path.join(Config.CREDENTIALS_FOLDER, 'credentials.json')
-
-        # 2. Проверяем наличие файла. Если файл отсутствует, показываем ошибку.
-        if not os.path.exists(self.creds_path):
-            print("FATAL ERROR: credentials.json not found for AuthManager at path:", self.creds_path)
-            print("СИСТЕМА АВТОРИЗАЦИИ ТРЕБУЕТ НАСТРОЙКИ! Создайте файл и вставьте JSON.")
-            return
-
-        try:
-            # 3. Авторизация клиента с помощью ЛОКАЛЬНОГО ФАЙЛА (Правильный метод для PythonAnywhere)
-            creds = Credentials.from_service_account_file(self.creds_path, scopes=Config.GOOGLE_SHEETS_SCOPES)
-            self.client = gspread.authorize(creds)
-            
-            # 4. Открытие таблицы
-            self.sheet = self.client.open_by_url(Config.USERS_SHEET_URL).sheet1
-        except Exception as e:
-            print(f"Error connecting to Google Sheets for Auth: {e}")
-            self.client = None
-
-    # УДАЛЕНА ФУНКЦИЯ _get_credentials_from_env, поскольку мы читаем данные с диска.
+        self.db = SessionLocal()
     
-    def _fetch_users_data(self):
-        """Получает данные пользователей из Google Таблицы."""
-        if not self.sheet:
-            return None
-
-        # Ожидаемые заголовки: Login, Password, Expiration Date (в формате YYYY-MM-DD)
-        try:
-            # Получаем все записи как список словарей
-            records = self.sheet.get_all_records()
-            return records
-        except Exception as e:
-            print(f"Error fetching data from Google Sheets: {e}")
-            return None
-
     def authenticate_user(self, login, password):
-        # ⚠️ Проверяем инициализацию клиента
-        if not self.client:
-            return {"success": False, "error": "Ошибка подключения к Google Sheets. Проверьте credentials.json."}
-
-        users_data = self._fetch_users_data()
-        if users_data is None:
-            return {"success": False, "error": "Не удалось загрузить данные пользователей."}
-        # print(f"Loaded users data: {users_data}") 
-
-        for user in users_data:
-            # Проверка соответствия ключей заголовкам в вашей таблице
-            user_login = user.get('Login')  
-            user_password = user.get('Password')
-            expiry_date_str = user.get('Expiration Date')
-            
-            if user_login == login and user_password == password:
-                # Проверка срока действия
-                days_left = None
-                try:
-                    expiry_date = datetime.strptime(expiry_date_str, '%Y-%m-%d').date()
-                    today = datetime.now().date()
-                    
-                    if today > expiry_date:
-                        return {"success": False, "error": f"Срок действия учетной записи истек ({expiry_date_str})."}
-                    
-                    days_left = (expiry_date - today).days
-
-                except (ValueError, TypeError):
-                    # Если формат даты неверен или отсутствует, считаем бессрочным
-                    days_left = "Бессрочно"
-
-                return {"success": True, "login": login, "days_left": days_left}
+        """
+        Аутентификация пользователя по логину и паролю.
         
-        return {"success": False, "error": "Неверный логин или пароль"}
+        Args:
+            login: Логин пользователя
+            password: Пароль пользователя
+            
+        Returns:
+            dict: Результат аутентификации
+        """
+        try:
+            # Поиск пользователя по логину
+            user = self.db.query(User).filter(User.username == login).first()
+            
+            if not user:
+                return {"success": False, "error": "Неверный логин или пароль"}
+            
+            # Проверка активности аккаунта
+            if not user.is_active:
+                return {"success": False, "error": "Учетная запись деактивирована"}
+            
+            # Проверка пароля
+            if not check_password_hash(user.password_hash, password):
+                return {"success": False, "error": "Неверный логин или пароль"}
+            
+            # Проверка срока действия
+            days_left = None
+            if user.expiration_date:
+                today = date.today()
+                if today > user.expiration_date:
+                    return {
+                        "success": False,
+                        "error": f"Срок действия учетной записи истек ({user.expiration_date.strftime('%Y-%m-%d')})."
+                    }
+                days_left = (user.expiration_date - today).days
+            else:
+                days_left = "Бессрочно"
+            
+            return {
+                "success": True,
+                "login": user.username,
+                "role": user.role,
+                "user_id": user.id,
+                "days_left": days_left
+            }
+        
+        except Exception as e:
+            print(f"Error authenticating user: {e}")
+            return {"success": False, "error": "Ошибка при аутентификации"}
+    
+    def get_user_by_username(self, username):
+        """
+        Получить пользователя по логину.
+        
+        Args:
+            username: Логин пользователя
+            
+        Returns:
+            User object or None
+        """
+        try:
+            return self.db.query(User).filter(User.username == username).first()
+        except Exception as e:
+            print(f"Error getting user: {e}")
+            return None
+    
+    def get_user_by_id(self, user_id):
+        """
+        Получить пользователя по ID.
+        
+        Args:
+            user_id: ID пользователя
+            
+        Returns:
+            User object or None
+        """
+        try:
+            return self.db.query(User).filter(User.id == user_id).first()
+        except Exception as e:
+            print(f"Error getting user: {e}")
+            return None
+    
+    def create_user(self, username, password, role='teacher', **kwargs):
+        """
+        Создать нового пользователя.
+        
+        Args:
+            username: Логин пользователя
+            password: Пароль (будет захеширован)
+            role: Роль пользователя ('superuser' или 'teacher')
+            **kwargs: Дополнительные поля (city, city_code, school, school_code, expiration_date, etc.)
+            
+        Returns:
+            dict: Результат создания
+        """
+        try:
+            # Проверка существования пользователя
+            existing_user = self.get_user_by_username(username)
+            if existing_user:
+                return {"success": False, "error": f"Пользователь с логином '{username}' уже существует"}
+            
+            # Хеширование пароля
+            password_hash = generate_password_hash(password)
+            
+            # Создание пользователя
+            user = User(
+                username=username,
+                password_hash=password_hash,
+                role=role,
+                city=kwargs.get('city'),
+                city_code=kwargs.get('city_code'),
+                school=kwargs.get('school'),
+                school_code=kwargs.get('school_code'),
+                expiration_date=kwargs.get('expiration_date'),
+                max_tests_limit=kwargs.get('max_tests_limit'),
+                is_active=kwargs.get('is_active', True),
+                is_admin=(role == 'superuser')
+            )
+            
+            self.db.add(user)
+            self.db.commit()
+            
+            return {"success": True, "user_id": user.id, "user": user}
+        
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error creating user: {e}")
+            return {"success": False, "error": f"Ошибка при создании пользователя: {str(e)}"}
+    
+    def update_user_password(self, user_id, new_password):
+        """
+        Обновить пароль пользователя.
+        
+        Args:
+            user_id: ID пользователя
+            new_password: Новый пароль
+            
+        Returns:
+            dict: Результат обновления
+        """
+        try:
+            user = self.get_user_by_id(user_id)
+            if not user:
+                return {"success": False, "error": "Пользователь не найден"}
+            
+            user.password_hash = generate_password_hash(new_password)
+            user.updated_at = datetime.utcnow()
+            
+            self.db.commit()
+            
+            return {"success": True, "message": "Пароль успешно обновлен"}
+        
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error updating password: {e}")
+            return {"success": False, "error": f"Ошибка при обновлении пароля: {str(e)}"}
+    
+    def close(self):
+        """Закрыть соединение с БД."""
+        if self.db:
+            self.db.close()
 
 auth_manager = AuthManager()
 
@@ -97,5 +185,22 @@ def login_required(f):
         if session.get('logged_in') != True:
             # Сохраняем запрошенный URL для перенаправления после входа
             return redirect(url_for('login', next=request.url))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def superuser_required(f):
+    """Декоратор для защиты маршрутов, требующих прав супер-пользователя."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Проверяем авторизацию
+        if session.get('logged_in') != True:
+            return redirect(url_for('login', next=request.url))
+        
+        # Проверяем роль супер-пользователя
+        if session.get('role') != 'superuser':
+            from flask import abort
+            abort(403)  # Forbidden
+        
         return f(*args, **kwargs)
     return decorated_function

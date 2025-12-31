@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for, abort
 import os
 import json
 import uuid
@@ -6,13 +6,16 @@ from werkzeug.utils import secure_filename
 import fitz
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime
+from datetime import datetime, date
 import re
 from config import Config
-from auth_utils import auth_manager, login_required
+from auth_utils import auth_manager, login_required, superuser_required
 from ai_checker import AIAnswerChecker
 from dataclasses import asdict
 from flask import send_from_directory
+from models import SessionLocal, User, Template, AuditLog, Subject
+from validators import ValidationError, validate_teacher_data, validate_topic, validate_topic_slug
+from utils import generate_username, generate_topic_slug, generate_random_password
 
 AI_AVAILABLE = False
 checker = None
@@ -410,8 +413,673 @@ def user_info():
     """Информация о текущем пользователе"""
     return jsonify({
         'username': session.get('login', 'Гость'),
+        'role': session.get('role'),
         'logged_in': session.get('logged_in', False)
     })
+
+
+# ==========================
+# ФУНКЦИИ ДЛЯ ЛОГИРОВАНИЯ
+# ==========================
+
+def log_audit_action(action, target_type=None, target_id=None, details=None):
+    """
+    Логирование действия в audit_log.
+    
+    Args:
+        action: Тип действия (create_teacher, update_teacher, delete_teacher, etc.)
+        target_type: Тип объекта (teacher, test)
+        target_id: ID объекта
+        details: Дополнительные детали (dict)
+    """
+    try:
+        db = SessionLocal()
+        log_entry = AuditLog(
+            user_id=session.get('user_id'),
+            username=session.get('login'),
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            details=details or {},
+            ip_address=request.remote_addr,
+            created_at=datetime.utcnow()
+        )
+        db.add(log_entry)
+        db.commit()
+        db.close()
+    except Exception as e:
+        print(f"Ошибка при логировании действия: {e}")
+
+
+# ==========================
+# API ДЛЯ УПРАВЛЕНИЯ УЧИТЕЛЯМИ
+# ==========================
+
+@app.route('/admin/teachers', methods=['GET'])
+@superuser_required
+def list_teachers():
+    """Список всех учителей (только для супер-пользователя)"""
+    try:
+        db = SessionLocal()
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        username_filter = request.args.get('username')  # Для фильтрации по username
+        
+        # Получение всех учителей
+        query = db.query(User).filter(User.role == 'teacher')
+        
+        # Фильтр по username если указан
+        if username_filter:
+            query = query.filter(User.username == username_filter)
+        
+        # Подсчет общего количества
+        total = query.count()
+        
+        # Пагинация
+        teachers = query.order_by(User.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+        
+        # Подсчет количества тестов для каждого учителя
+        teachers_data = []
+        for teacher in teachers:
+            tests_count = db.query(Template).filter(
+                Template.created_by_username == teacher.username
+            ).count()
+            
+            teachers_data.append({
+                'id': teacher.id,
+                'username': teacher.username,
+                'city': teacher.city,
+                'city_code': teacher.city_code,
+                'school': teacher.school,
+                'school_code': teacher.school_code,
+                'is_active': teacher.is_active,
+                'expiration_date': teacher.expiration_date.isoformat() if teacher.expiration_date else None,
+                'max_tests_limit': teacher.max_tests_limit,
+                'tests_count': tests_count,
+                'created_at': teacher.created_at.isoformat() if teacher.created_at else None
+            })
+        
+        db.close()
+        
+        return jsonify({
+            'success': True,
+            'teachers': teachers_data,
+            'total': total,
+            'page': page,
+            'per_page': per_page
+        })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/teacher/info')
+@login_required
+def get_teacher_info():
+    """Получение данных текущего учителя (для использования в редакторе)"""
+    try:
+        username = session.get('username') or session.get('login')
+        if not username:
+            return jsonify({'success': False, 'error': 'Пользователь не авторизован'}), 401
+        
+        db = SessionLocal()
+        teacher = db.query(User).filter(User.username == username).first()
+        
+        if not teacher:
+            db.close()
+            return jsonify({'success': False, 'error': 'Учитель не найден'}), 404
+        
+        teacher_data = {
+            'username': teacher.username,
+            'city': teacher.city,
+            'city_code': teacher.city_code,
+            'school': teacher.school,
+            'school_code': teacher.school_code
+        }
+        
+        db.close()
+        
+        return jsonify({'success': True, 'teacher': teacher_data})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/teachers', methods=['POST'])
+@superuser_required
+def create_teacher():
+    """Создание нового учителя"""
+    try:
+        data = request.get_json()
+        
+        # Валидация данных
+        validate_teacher_data(data)
+        
+        # Генерация логина
+        username = generate_username(data['city_code'], data['school_code'])
+        
+        # Проверка уникальности логина
+        db = SessionLocal()
+        existing_user = db.query(User).filter(User.username == username).first()
+        if existing_user:
+            db.close()
+            return jsonify({
+                'success': False,
+                'error': f'Пользователь с логином "{username}" уже существует'
+            }), 400
+        
+        # Генерация пароля
+        if data.get('generate_password', False):
+            password = generate_random_password(12)
+        else:
+            password = data.get('password')
+            if not password:
+                db.close()
+                return jsonify({
+                    'success': False,
+                    'error': 'Пароль не указан'
+                }), 400
+        
+        # Парсинг даты истечения
+        expiration_date = None
+        if data.get('expiration_date'):
+            try:
+                expiration_date = datetime.strptime(data['expiration_date'], '%Y-%m-%d').date()
+            except ValueError:
+                db.close()
+                return jsonify({
+                    'success': False,
+                    'error': 'Неверный формат даты (ожидается YYYY-MM-DD)'
+                }), 400
+        
+        # Создание пользователя
+        result = auth_manager.create_user(
+            username=username,
+            password=password,
+            role='teacher',
+            city=data['city'],
+            city_code=data['city_code'],
+            school=data['school'],
+            school_code=data['school_code'],
+            expiration_date=expiration_date,
+            max_tests_limit=data.get('max_tests_limit'),
+            is_active=True
+        )
+        
+        db.close()
+        
+        if result['success']:
+            # Логирование
+            log_audit_action(
+                action='create_teacher',
+                target_type='teacher',
+                target_id=result['user_id'],
+                details={
+                    'username': username,
+                    'city': data['city'],
+                    'school': data['school']
+                }
+            )
+            
+            return jsonify({
+                'success': True,
+                'teacher': {
+                    'id': result['user_id'],
+                    'username': username,
+                    'password': password  # Показываем только при создании
+                },
+                'message': f'Учитель "{username}" успешно создан'
+            }), 201
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Ошибка при создании учителя')
+            }), 500
+    
+    except ValidationError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/teachers/<int:teacher_id>', methods=['GET'])
+@superuser_required
+def get_teacher(teacher_id):
+    """Получение данных учителя"""
+    try:
+        db = SessionLocal()
+        teacher = db.query(User).filter(
+            User.id == teacher_id,
+            User.role == 'teacher'
+        ).first()
+        
+        if not teacher:
+            db.close()
+            return jsonify({'success': False, 'error': 'Учитель не найден'}), 404
+        
+        tests_count = db.query(Template).filter(
+            Template.created_by_username == teacher.username
+        ).count()
+        
+        teacher_data = {
+            'id': teacher.id,
+            'username': teacher.username,
+            'city': teacher.city,
+            'city_code': teacher.city_code,
+            'school': teacher.school,
+            'school_code': teacher.school_code,
+            'is_active': teacher.is_active,
+            'expiration_date': teacher.expiration_date.isoformat() if teacher.expiration_date else None,
+            'max_tests_limit': teacher.max_tests_limit,
+            'tests_count': tests_count,
+            'created_at': teacher.created_at.isoformat() if teacher.created_at else None
+        }
+        
+        db.close()
+        
+        return jsonify({'success': True, 'teacher': teacher_data})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/teachers/<int:teacher_id>', methods=['PUT'])
+@superuser_required
+def update_teacher(teacher_id):
+    """Обновление данных учителя"""
+    try:
+        data = request.get_json()
+        db = SessionLocal()
+        
+        teacher = db.query(User).filter(
+            User.id == teacher_id,
+            User.role == 'teacher'
+        ).first()
+        
+        if not teacher:
+            db.close()
+            return jsonify({'success': False, 'error': 'Учитель не найден'}), 404
+        
+        # Обновление полей
+        if 'city' in data:
+            teacher.city = data['city']
+        if 'city_code' in data:
+            teacher.city_code = data['city_code']
+        if 'school' in data:
+            teacher.school = data['school']
+        if 'school_code' in data:
+            teacher.school_code = data['school_code']
+        if 'is_active' in data:
+            teacher.is_active = data['is_active']
+        if 'expiration_date' in data:
+            if data['expiration_date']:
+                teacher.expiration_date = datetime.strptime(data['expiration_date'], '%Y-%m-%d').date()
+            else:
+                teacher.expiration_date = None
+        if 'max_tests_limit' in data:
+            teacher.max_tests_limit = data['max_tests_limit']
+        
+        teacher.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.close()
+        
+        # Логирование
+        log_audit_action(
+            action='update_teacher',
+            target_type='teacher',
+            target_id=teacher_id,
+            details=data
+        )
+        
+        return jsonify({'success': True, 'message': 'Данные учителя обновлены'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/teachers/<int:teacher_id>', methods=['DELETE'])
+@superuser_required
+def delete_teacher(teacher_id):
+    """Удаление учителя (мягкое удаление через is_active=False)"""
+    try:
+        db = SessionLocal()
+        
+        teacher = db.query(User).filter(
+            User.id == teacher_id,
+            User.role == 'teacher'
+        ).first()
+        
+        if not teacher:
+            db.close()
+            return jsonify({'success': False, 'error': 'Учитель не найден'}), 404
+        
+        # Мягкое удаление
+        teacher.is_active = False
+        teacher.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.close()
+        
+        # Логирование
+        log_audit_action(
+            action='delete_teacher',
+            target_type='teacher',
+            target_id=teacher_id,
+            details={'username': teacher.username}
+        )
+        
+        return jsonify({'success': True, 'message': 'Учитель деактивирован'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/teachers/<int:teacher_id>/reset-password', methods=['POST'])
+@superuser_required
+def reset_teacher_password(teacher_id):
+    """Сброс пароля учителя"""
+    try:
+        data = request.get_json()
+        generate_new = data.get('generate', True)
+        
+        if generate_new:
+            new_password = generate_random_password(12)
+        else:
+            new_password = data.get('password')
+            if not new_password:
+                return jsonify({
+                    'success': False,
+                    'error': 'Пароль не указан'
+                }), 400
+        
+        result = auth_manager.update_user_password(teacher_id, new_password)
+        
+        if result['success']:
+            # Логирование
+            log_audit_action(
+                action='reset_password',
+                target_type='teacher',
+                target_id=teacher_id
+            )
+            
+            return jsonify({
+                'success': True,
+                'password': new_password,  # Показываем только при сбросе
+                'message': 'Пароль успешно обновлен'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Ошибка при обновлении пароля')
+            }), 500
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/teachers/generate-password', methods=['POST'])
+@superuser_required
+def generate_password():
+    """Генерация случайного пароля"""
+    length = request.json.get('length', 12) if request.is_json else 12
+    password = generate_random_password(length)
+    return jsonify({'success': True, 'password': password})
+
+
+@app.route('/admin/audit-logs', methods=['GET'])
+@superuser_required
+def get_audit_logs():
+    """Получение логов действий (только для супер-пользователя)"""
+    try:
+        db = SessionLocal()
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        
+        query = db.query(AuditLog)
+        
+        total = query.count()
+        logs = query.order_by(AuditLog.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+        
+        logs_data = [{
+            'id': log.id,
+            'user_id': log.user_id,
+            'username': log.username,
+            'action': log.action,
+            'target_type': log.target_type,
+            'target_id': log.target_id,
+            'details': log.details,
+            'ip_address': log.ip_address,
+            'created_at': log.created_at.isoformat() if log.created_at else None
+        } for log in logs]
+        
+        db.close()
+        
+        return jsonify({
+            'success': True,
+            'logs': logs_data,
+            'total': total,
+            'page': page,
+            'per_page': per_page
+        })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==========================
+# API ДЛЯ УПРАВЛЕНИЯ ПРЕДМЕТАМИ
+# ==========================
+
+@app.route('/admin/subjects', methods=['GET'])
+@superuser_required
+def list_subjects():
+    """Список всех предметов (только для супер-пользователя)"""
+    try:
+        db = SessionLocal()
+        subjects = db.query(Subject).filter(Subject.is_active == True).order_by(Subject.name).all()
+        
+        subjects_data = [{
+            'id': s.id,
+            'name': s.name,
+            'name_slug': s.name_slug,
+            'description': s.description,
+            'is_active': s.is_active,
+            'created_at': s.created_at.isoformat() if s.created_at else None
+        } for s in subjects]
+        
+        db.close()
+        
+        return jsonify({
+            'success': True,
+            'subjects': subjects_data
+        })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/subjects', methods=['GET'])
+def get_subjects():
+    """Получение списка активных предметов (публичный API)"""
+    try:
+        db = SessionLocal()
+        subjects = db.query(Subject).filter(Subject.is_active == True).order_by(Subject.name).all()
+        
+        subjects_data = [{
+            'id': s.id,
+            'name': s.name,
+            'name_slug': s.name_slug
+        } for s in subjects]
+        
+        db.close()
+        
+        return jsonify({
+            'success': True,
+            'subjects': subjects_data
+        })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/subjects', methods=['POST'])
+@superuser_required
+def create_subject():
+    """Создание нового предмета"""
+    try:
+        data = request.get_json()
+        
+        if not data.get('name') or not data['name'].strip():
+            return jsonify({
+                'success': False,
+                'error': 'Название предмета обязательно'
+            }), 400
+        
+        name = data['name'].strip()
+        name_slug = generate_topic_slug(name)  # Используем ту же функцию для генерации slug
+        
+        db = SessionLocal()
+        
+        # Проверка уникальности
+        existing = db.query(Subject).filter(
+            (Subject.name == name) | (Subject.name_slug == name_slug)
+        ).first()
+        
+        if existing:
+            db.close()
+            return jsonify({
+                'success': False,
+                'error': f'Предмет с названием "{name}" уже существует'
+            }), 400
+        
+        # Создание предмета
+        subject = Subject(
+            name=name,
+            name_slug=name_slug,
+            description=data.get('description', ''),
+            is_active=True
+        )
+        
+        db.add(subject)
+        db.commit()
+        subject_id = subject.id
+        db.close()
+        
+        # Логирование
+        log_audit_action(
+            action='create_subject',
+            target_type='subject',
+            target_id=subject_id,
+            details={'name': name, 'name_slug': name_slug}
+        )
+        
+        return jsonify({
+            'success': True,
+            'subject': {
+                'id': subject_id,
+                'name': name,
+                'name_slug': name_slug
+            },
+            'message': f'Предмет "{name}" успешно создан'
+        }), 201
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/subjects/<int:subject_id>', methods=['PUT'])
+@superuser_required
+def update_subject(subject_id):
+    """Обновление предмета"""
+    try:
+        data = request.get_json()
+        db = SessionLocal()
+        
+        subject = db.query(Subject).filter(Subject.id == subject_id).first()
+        
+        if not subject:
+            db.close()
+            return jsonify({'success': False, 'error': 'Предмет не найден'}), 404
+        
+        # Обновление полей
+        if 'name' in data and data['name']:
+            new_name = data['name'].strip()
+            new_slug = generate_topic_slug(new_name)
+            
+            # Проверка уникальности
+            existing = db.query(Subject).filter(
+                Subject.id != subject_id,
+                ((Subject.name == new_name) | (Subject.name_slug == new_slug))
+            ).first()
+            
+            if existing:
+                db.close()
+                return jsonify({
+                    'success': False,
+                    'error': f'Предмет с названием "{new_name}" уже существует'
+                }), 400
+            
+            subject.name = new_name
+            subject.name_slug = new_slug
+        
+        if 'description' in data:
+            subject.description = data['description']
+        
+        if 'is_active' in data:
+            subject.is_active = data['is_active']
+        
+        subject.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.close()
+        
+        # Логирование
+        log_audit_action(
+            action='update_subject',
+            target_type='subject',
+            target_id=subject_id,
+            details=data
+        )
+        
+        return jsonify({'success': True, 'message': 'Предмет обновлен'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/admin/subjects/<int:subject_id>', methods=['DELETE'])
+@superuser_required
+def delete_subject(subject_id):
+    """Удаление предмета (мягкое удаление)"""
+    try:
+        db = SessionLocal()
+        
+        subject = db.query(Subject).filter(Subject.id == subject_id).first()
+        
+        if not subject:
+            db.close()
+            return jsonify({'success': False, 'error': 'Предмет не найден'}), 404
+        
+        # Мягкое удаление
+        subject.is_active = False
+        subject.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.close()
+        
+        # Логирование
+        log_audit_action(
+            action='delete_subject',
+            target_type='subject',
+            target_id=subject_id,
+            details={'name': subject.name}
+        )
+        
+        return jsonify({'success': True, 'message': 'Предмет деактивирован'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ==========================
@@ -427,7 +1095,19 @@ def home():
 @app.route('/editor')
 @login_required
 def editor_page():
-    return render_template('editor.html', login=session.get('login'))
+    return render_template('editor.html', login=session.get('login'), role=session.get('role'))
+
+@app.route('/admin/teachers')
+@superuser_required
+def admin_teachers_page():
+    """Страница управления учителями"""
+    return render_template('admin_teachers.html', login=session.get('login'))
+
+@app.route('/admin/subjects')
+@superuser_required
+def admin_subjects_page():
+    """Страница управления предметами"""
+    return render_template('admin_subjects.html', login=session.get('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -444,6 +1124,9 @@ def login():
         if result['success']:
             session['logged_in'] = True
             session['login'] = result['login']
+            session['role'] = result.get('role', 'teacher')
+            session['user_id'] = result.get('user_id')
+            session['username'] = result['login']  # Для совместимости
             next_url = request.args.get('next') or url_for('editor_page')
             return redirect(next_url)
         else:
@@ -457,8 +1140,123 @@ def logout():
     session.pop('login', None)
     return redirect(url_for('login'))
 
+@app.route('/test/<city_code>/<school_code>/<subject_slug>/<topic_slug>')
+def test_by_link(city_code, school_code, subject_slug, topic_slug):
+    """
+    Публичный доступ к тесту по уникальной ссылке.
+    Новый формат: /test/<city_code>/<school_code>/<subject_slug>/<topic_slug>
+    """
+    try:
+        db = SessionLocal()
+        
+        # Поиск учителя по city_code и school_code
+        username = generate_username(city_code, school_code)
+        user = db.query(User).filter(User.username == username).first()
+        
+        if not user:
+            db.close()
+            return render_template('error.html', 
+                error_code=404,
+                error_message='Тест не найден',
+                error_description='Учитель не найден. Проверьте правильность ссылки.'
+            ), 404
+        
+        # Поиск предмета по slug
+        subject = db.query(Subject).filter(
+            Subject.name_slug == subject_slug,
+            Subject.is_active == True
+        ).first()
+        
+        if not subject:
+            db.close()
+            return render_template('error.html', 
+                error_code=404,
+                error_message='Тест не найден',
+                error_description='Предмет не найден. Проверьте правильность ссылки.'
+            ), 404
+        
+        # Поиск теста по username, subject_id и topic_slug
+        template = db.query(Template).filter(
+            Template.created_by_username == username,
+            Template.subject_id == subject.id,
+            Template.topic_slug == topic_slug,
+            Template.is_active == True
+        ).first()
+        
+        if not template:
+            db.close()
+            return render_template('error.html', 
+                error_code=404,
+                error_message='Тест не найден',
+                error_description='Проверьте правильность ссылки или обратитесь к учителю.'
+            ), 404
+        
+        # Проверка публичности теста
+        if not template.is_public:
+            db.close()
+            return render_template('error.html',
+                error_code=403,
+                error_message='Доступ запрещен',
+                error_description='Этот тест недоступен для публичного доступа.'
+            ), 403
+        
+        # Увеличение счетчика прохождений
+        template.access_count = (template.access_count or 0) + 1
+        db.commit()
+        db.close()
+        
+        # Загрузка данных шаблона из файла (для совместимости)
+        template_path = os.path.join(Config.TEMPLATES_FOLDER, f"{template.template_id}.json")
+        if os.path.exists(template_path):
+            with open(template_path, 'r', encoding='utf-8') as f:
+                template_data = json.load(f)
+        else:
+            # Если файла нет, создаем данные из БД
+            template_data = {
+                'template_id': template.template_id,
+                'name': template.name,
+                'topic': template.topic,
+                'fields': template.fields or [],
+                'files': template.images or []
+            }
+        
+        # Передача данных в шаблон
+        return render_template('student.html', 
+            template_data=template_data,
+            template_id=template.template_id,
+            test_url=request.url
+        )
+    
+    except Exception as e:
+        print(f"Ошибка при загрузке теста: {e}")
+        import traceback
+        traceback.print_exc()
+        return render_template('error.html',
+            error_code=500,
+            error_message='Внутренняя ошибка сервера',
+            error_description='Произошла ошибка при загрузке теста. Попробуйте позже.'
+        ), 500
+
+
 @app.route('/student')
 def student():
+    """
+    Страница студента - список доступных тестов или конкретный тест.
+    """
+    # Проверка, передан ли template_id в параметрах
+    template_id = request.args.get('template_id')
+    if template_id:
+        # Загрузка конкретного теста по старому формату (для обратной совместимости)
+        template_path = os.path.join(Config.TEMPLATES_FOLDER, f"{template_id}.json")
+        if os.path.exists(template_path):
+            with open(template_path, 'r', encoding='utf-8') as f:
+                template_data = json.load(f)
+            return render_template('student.html', 
+                template_data=template_data,
+                template_id=template_id
+            )
+    
+    # Иначе показываем список доступных тестов
     return render_template('student.html')
 
 
@@ -641,27 +1439,58 @@ def load_template(template_id):
     Используется как редактором, так и студентом.
     """
     try:
-        # Определяем имя файла
+        # Очистка template_id от .json если есть
+        clean_template_id = template_id.replace('.json', '')
+        
+        # Сначала пытаемся загрузить из БД
+        db = SessionLocal()
+        template = db.query(Template).filter(Template.template_id == clean_template_id).first()
+        
+        if template:
+            # Загружаем из файла для совместимости
+            filepath = os.path.join(Config.TEMPLATES_FOLDER, f"{clean_template_id}.json")
+            if os.path.exists(filepath):
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    template_data = json.load(f)
+            else:
+                # Если файла нет, создаем из БД
+                template_data = {
+                    'template_id': template.template_id,
+                    'name': template.name,
+                    'topic': template.topic,
+                    'fields': template.fields or [],
+                    'files': template.images or []
+                }
+            
+            # Добавляем данные из БД
+            template_data['class_number'] = template.class_number
+            template_data['subject_id'] = template.subject_id
+            template_data['topic'] = template.topic
+            template_data['topic_slug'] = template.topic_slug
+            
+            db.close()
+            return jsonify(template_data)
+        
+        # Если не найдено в БД, загружаем из файла (для обратной совместимости)
         if template_id.endswith('.json'):
-            # Если передан полный filename
             safe_filename = secure_filename(template_id)
             filepath = os.path.join(Config.TEMPLATES_FOLDER, safe_filename)
         else:
-            # Если передан template_id
-            filepath = os.path.join(Config.TEMPLATES_FOLDER, f"{template_id}.json")
+            filepath = os.path.join(Config.TEMPLATES_FOLDER, f"{clean_template_id}.json")
 
-        # Проверяем существование файла
-        if not os.path.exists(filepath):
-            return jsonify({'error': f'Шаблон не найден'}), 404
-
-        # Читаем и возвращаем содержимое
-        with open(filepath, 'r', encoding='utf-8') as f:
-            template_data = json.load(f)
-
-        return jsonify(template_data)
+        if os.path.exists(filepath):
+            with open(filepath, 'r', encoding='utf-8') as f:
+                template_data = json.load(f)
+            db.close()
+            return jsonify(template_data)
+        
+        db.close()
+        return jsonify({'error': f'Шаблон не найден'}), 404
 
     except Exception as e:
         print(f"Ошибка при загрузке шаблона {template_id}: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': 'Внутренняя ошибка сервера при чтении шаблона'}), 500
 
 @app.route('/uploads/<filename>')
@@ -677,26 +1506,200 @@ def uploaded_file(filename):
 @login_required
 def save_template():
     """
-    Сохранение шаблона в JSON файл.
+    Сохранение шаблона в JSON файл и БД.
     """
     try:
         data = request.get_json()
-
+        username = session.get('username') or session.get('login')
+        
+        if not username:
+            return jsonify({'error': 'Пользователь не авторизован'}), 401
+        
+        # Валидация темы
+        topic = data.get('topic', '').strip()
+        if not topic:
+            return jsonify({'error': 'Тема теста обязательна для заполнения'}), 400
+        
+        try:
+            validate_topic(topic)
+        except ValidationError as e:
+            return jsonify({'error': str(e)}), 400
+        
+        # Валидация класса
+        class_number = data.get('class_number')
+        if not class_number:
+            return jsonify({'error': 'Класс обязателен для заполнения'}), 400
+        
+        try:
+            class_number = int(class_number)
+            if class_number < 1 or class_number > 11:
+                return jsonify({'error': 'Класс должен быть от 1 до 11'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Некорректный номер класса'}), 400
+        
+        # Валидация предмета
+        subject_id = data.get('subject_id')
+        if not subject_id:
+            return jsonify({'error': 'Предмет обязателен для заполнения'}), 400
+        
+        try:
+            subject_id = int(subject_id)
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Некорректный ID предмета'}), 400
+        
+        db = SessionLocal()
+        
+        # Проверка существования предмета
+        subject = db.query(Subject).filter(
+            Subject.id == subject_id,
+            Subject.is_active == True
+        ).first()
+        
+        if not subject:
+            db.close()
+            return jsonify({'error': 'Предмет не найден или неактивен'}), 400
+        
+        # Генерация topic_slug
+        topic_slug = generate_topic_slug(topic)
+        
+        try:
+            validate_topic_slug(topic_slug)
+        except ValidationError as e:
+            db.close()
+            return jsonify({'error': f'Ошибка генерации slug: {str(e)}'}), 400
+        
         # Генерация ID если не указан
         if 'template_id' not in data or not data['template_id']:
             data['template_id'] = f"tpl_{uuid.uuid4().hex[:8]}"
-
+        
+        # Проверка уникальности темы для данного учителя и предмета
+        existing_template = db.query(Template).filter(
+            Template.created_by_username == username,
+            Template.subject_id == subject_id,
+            Template.topic_slug == topic_slug
+        ).first()
+        
+        if existing_template and str(existing_template.template_id) != data['template_id']:
+            db.close()
+            return jsonify({
+                'error': f'Тест с темой "{topic}" по предмету "{subject.name}" для {class_number} класса уже существует. Выберите другое название темы.'
+            }), 400
+        
+        # Проверка лимита на количество тестов
+        user = auth_manager.get_user_by_username(username)
+        if user and user.max_tests_limit:
+            current_tests_count = db.query(Template).filter(
+                Template.created_by_username == username
+            ).count()
+            
+            if current_tests_count >= user.max_tests_limit:
+                db.close()
+                return jsonify({
+                    'error': f'Достигнут лимит на количество тестов ({user.max_tests_limit})'
+                }), 400
+        
+        # Получение данных учителя для формирования ссылки
+        if not user:
+            user = auth_manager.get_user_by_username(username)
+        
+        if not user or not user.city_code or not user.school_code:
+            db.close()
+            return jsonify({'error': 'У учителя не указаны город и школа. Обратитесь к администратору.'}), 400
+        
+        # Добавление полей в данные шаблона
+        data['topic'] = topic
+        data['topic_slug'] = topic_slug
+        data['created_by_username'] = username
+        data['class_number'] = class_number
+        data['subject_id'] = subject_id
+        
         # Формирование имени файла
         filename = f"{data['template_id']}.json"
         filepath = os.path.join(Config.TEMPLATES_FOLDER, filename)
-
-        # Сохранение
+        
+        # Сохранение в файл
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-
-        return jsonify({'success': True, 'template_id': data['template_id']})
-
+        
+        # Сохранение/обновление в БД
+        template = db.query(Template).filter(
+            Template.template_id == data['template_id']
+        ).first()
+        
+        if template:
+            # Обновление существующего шаблона
+            template.name = data.get('name', template.name)
+            template.topic = topic
+            template.topic_slug = topic_slug
+            template.created_by_username = username
+            template.class_number = class_number
+            template.subject_id = subject_id
+            template.fields = data.get('fields', template.fields)
+            template.images = data.get('files', template.images)
+            template.is_active = data.get('is_active', True)
+            template.is_public = data.get('is_public', True)
+            template.updated_at = datetime.utcnow()
+        else:
+            # Создание нового шаблона
+            template = Template(
+                template_id=data['template_id'],
+                name=data.get('name', 'Без названия'),
+                description=data.get('description'),
+                fields=data.get('fields', []),
+                images=data.get('files', []),
+                created_by=user.id if user else None,
+                topic=topic,
+                topic_slug=topic_slug,
+                created_by_username=username,
+                class_number=class_number,
+                subject_id=subject_id,
+                is_active=data.get('is_active', True),
+                is_public=data.get('is_public', True)
+            )
+            db.add(template)
+        
+        db.commit()
+        db.close()
+        
+        # Логирование создания теста
+        log_audit_action(
+            action='create_test' if not template.id else 'update_test',
+            target_type='test',
+            target_id=template.id if template.id else None,
+            details={
+                'template_id': data['template_id'],
+                'topic': topic,
+                'topic_slug': topic_slug,
+                'class_number': class_number,
+                'subject_id': subject_id
+            }
+        )
+        
+        # Формирование ссылки в новом формате
+        base_url = request.host_url.rstrip('/')
+        # Заменяем http://localhost:5000 на https://docquiz.predmet.kz если нужно
+        if 'localhost' in base_url or '127.0.0.1' in base_url:
+            base_url = 'https://docquiz.predmet.kz'
+        test_url = f"{base_url}/test/{user.city_code}/{user.school_code}/{subject.name_slug}/{topic_slug}"
+        
+        return jsonify({
+            'success': True,
+            'template_id': data['template_id'],
+            'topic': topic,
+            'topic_slug': topic_slug,
+            'class_number': class_number,
+            'subject_id': subject_id,
+            'subject_name': subject.name,
+            'test_url': test_url,
+            'message': 'Шаблон успешно сохранен'
+        })
+    
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
+        print(f"Ошибка при сохранении шаблона: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
     
 
@@ -1163,6 +2166,38 @@ def clear_ai_cache():
     
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==========================
+# ОБРАБОТЧИКИ ОШИБОК
+# ==========================
+
+@app.errorhandler(404)
+def not_found_error(error):
+    """Обработчик ошибки 404"""
+    return render_template('error.html',
+        error_code=404,
+        error_message='Страница не найдена',
+        error_description='Запрашиваемая страница не существует.'
+    ), 404
+
+@app.errorhandler(403)
+def forbidden_error(error):
+    """Обработчик ошибки 403"""
+    return render_template('error.html',
+        error_code=403,
+        error_message='Доступ запрещен',
+        error_description='У вас нет прав для доступа к этой странице.'
+    ), 403
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Обработчик ошибки 500"""
+    return render_template('error.html',
+        error_code=500,
+        error_message='Внутренняя ошибка сервера',
+        error_description='Произошла непредвиденная ошибка. Попробуйте позже.'
+    ), 500
 
 
 if __name__ == '__main__':

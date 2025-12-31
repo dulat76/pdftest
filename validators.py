@@ -266,3 +266,163 @@ def validate_pagination(page: int, per_page: int, max_per_page: int = 100) -> tu
         raise ValidationError(f"Максимум {max_per_page} элементов на странице")
     
     return page, per_page
+
+
+def validate_teacher_data(data: Dict[str, Any]) -> None:
+    """
+    Validate teacher data.
+    
+    Args:
+        data: Teacher data dictionary
+        
+    Raises:
+        ValidationError: If validation fails
+    """
+    required_fields = ['city', 'city_code', 'school', 'school_code']
+    
+    for field in required_fields:
+        if field not in data or not data[field]:
+            raise ValidationError(f"Не указано обязательное поле: {field}")
+    
+    # Validate city
+    city = data['city'].strip()
+    if len(city) < 2:
+        raise ValidationError("Название города слишком короткое")
+    if len(city) > 100:
+        raise ValidationError("Название города слишком длинное")
+    
+    # Validate city_code
+    city_code = data['city_code'].strip().lower()
+    if not validate_city_code(city_code):
+        raise ValidationError("Некорректный код города")
+    
+    # Validate school
+    school = data['school'].strip()
+    if len(school) < 2:
+        raise ValidationError("Название школы слишком короткое")
+    if len(school) > 200:
+        raise ValidationError("Название школы слишком длинное")
+    
+    # Validate school_code
+    school_code = data['school_code'].strip().lower()
+    if not validate_school_code(school_code):
+        raise ValidationError("Некорректный код школы")
+    
+    # Validate password if provided
+    if 'password' in data and data['password']:
+        password = data['password']
+        if len(password) < 8:
+            raise ValidationError("Пароль должен содержать минимум 8 символов")
+        if len(password) > 128:
+            raise ValidationError("Пароль слишком длинный (максимум 128 символов)")
+
+
+def validate_city_code(code: str) -> bool:
+    """
+    Validate city code format.
+    
+    Args:
+        code: City code to validate
+        
+    Returns:
+        True if valid, False otherwise
+    """
+    if not code:
+        return False
+    
+    # Only lowercase letters and numbers, 2-20 characters
+    if not re.match(r'^[a-z0-9]{2,20}$', code):
+        return False
+    
+    return True
+
+
+def validate_school_code(code: str) -> bool:
+    """
+    Validate school code format.
+    
+    Args:
+        code: School code to validate
+        
+    Returns:
+        True if valid, False otherwise
+    """
+    if not code:
+        return False
+    
+    # Only lowercase letters and numbers, 2-50 characters
+    if not re.match(r'^[a-z0-9]{2,50}$', code):
+        return False
+    
+    return True
+
+
+def validate_username_format(username: str) -> bool:
+    """
+    Validate username format.
+    
+    Args:
+        username: Username to validate
+        
+    Returns:
+        True if valid, False otherwise
+    """
+    if not username:
+        return False
+    
+    # Only lowercase letters and numbers, 3-100 characters
+    if not re.match(r'^[a-z0-9]{3,100}$', username):
+        return False
+    
+    return True
+
+
+def validate_topic_slug(slug: str) -> None:
+    """
+    Validate topic slug format.
+    
+    Args:
+        slug: Topic slug to validate
+        
+    Raises:
+        ValidationError: If validation fails
+    """
+    if not slug:
+        raise ValidationError("Slug темы не может быть пустым")
+    
+    if len(slug) > 100:
+        raise ValidationError("Slug темы слишком длинный (максимум 100 символов)")
+    
+    # Only lowercase letters, numbers, and hyphens
+    if not re.match(r'^[a-z0-9\-]+$', slug):
+        raise ValidationError("Slug темы может содержать только латинские буквы, цифры и дефисы")
+    
+    # Cannot start or end with hyphen
+    if slug.startswith('-') or slug.endswith('-'):
+        raise ValidationError("Slug темы не может начинаться или заканчиваться дефисом")
+    
+    # Cannot have consecutive hyphens
+    if '--' in slug:
+        raise ValidationError("Slug темы не может содержать подряд идущие дефисы")
+
+
+def validate_topic(topic: str) -> None:
+    """
+    Validate topic name.
+    
+    Args:
+        topic: Topic name to validate
+        
+    Raises:
+        ValidationError: If validation fails
+    """
+    if not topic or not topic.strip():
+        raise ValidationError("Тема теста не может быть пустой")
+    
+    topic = topic.strip()
+    
+    if len(topic) < 2:
+        raise ValidationError("Тема теста слишком короткая")
+    
+    if len(topic) > 200:
+        raise ValidationError("Тема теста слишком длинная (максимум 200 символов)")

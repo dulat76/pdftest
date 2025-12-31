@@ -111,11 +111,28 @@
 </head>
 <body>
     <div class="error-container">
-        <div class="error-icon">⚠️</div>
-        <h1 class="error-title">Произошла ошибка</h1>
+        <div class="error-icon">
+            {% if error_code == 404 %}🔍
+            {% elif error_code == 403 %}🔒
+            {% elif error_code == 500 %}⚠️
+            {% else %}❌
+            {% endif %}
+        </div>
+        <h1 class="error-title">
+            {% if error_code == 404 %}Страница не найдена
+            {% elif error_code == 403 %}Доступ запрещен
+            {% elif error_code == 500 %}Внутренняя ошибка сервера
+            {% else %}Произошла ошибка
+            {% endif %}
+        </h1>
         <p class="error-message">
-            {{ error if error else "Что-то пошло не так. Пожалуйста, попробуйте еще раз." }}
+            {% if error_message %}{{ error_message }}{% else %}Что-то пошло не так. Пожалуйста, попробуйте еще раз.{% endif %}
         </p>
+        {% if error_description %}
+        <p class="error-message" style="font-size: 14px; color: #999; margin-top: -15px;">
+            {{ error_description }}
+        </p>
+        {% endif %}
         
         <div class="error-actions">
             <a href="/" class="btn btn-primary">На главную</a>

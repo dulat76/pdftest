@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Управление учителями</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .admin-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .btn-create {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        .btn-create:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        .teachers-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .teachers-table th {
+            background: #f8f9fa;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #dee2e6;
+        }
+        .teachers-table td {
+            padding: 15px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .teachers-table tr:hover {
+            background: #f8f9fa;
+        }
+        .btn-action {
+            padding: 6px 12px;
+            margin: 0 3px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-edit {
+            background: #3498db;
+            color: white;
+        }
+        .btn-reset {
+            background: #f39c12;
+            color: white;
+        }
+        .btn-delete {
+            background: #e74c3c;
+            color: white;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            overflow: auto;
+        }
+        .modal-content {
+            background: white;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .password-group {
+            display: flex;
+            gap: 10px;
+        }
+        .password-group input {
+            flex: 1;
+        }
+        .btn-generate {
+            background: #95a5a6;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-inactive {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .username-preview {
+            background: #e9ecef;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            margin-top: 5px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <div class="header-actions">
+            <h1>👥 Управление учителями</h1>
+            <div>
+                <a href="{{ url_for('editor_page') }}" style="margin-right: 10px; color: #667eea; text-decoration: none;">← Редактор</a>
+                <a href="{{ url_for('admin_subjects_page') }}" style="margin-right: 10px; color: #667eea; text-decoration: none;">📚 Предметы</a>
+                <button class="btn-create" onclick="openCreateModal()">➕ Добавить учителя</button>
+            </div>
+        </div>
+
+        <div id="loading" style="text-align: center; padding: 40px;">Загрузка...</div>
+        <div id="error" style="display: none; background: #f8d7da; color: #721c24; padding: 15px; border-radius: 8px; margin-bottom: 20px;"></div>
+        
+        <table class="teachers-table" id="teachersTable" style="display: none;">
+            <thead>
+                <tr>
+                    <th>Логин</th>
+                    <th>Город</th>
+                    <th>Школа</th>
+                    <th>Статус</th>
+                    <th>Тестов</th>
+                    <th>Срок действия</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody id="teachersBody"></tbody>
+        </table>
+
+        <!-- Модальное окно создания/редактирования -->
+        <div id="teacherModal" class="modal">
+            <div class="modal-content">
+                <h2 id="modalTitle">Добавить учителя</h2>
+                <form id="teacherForm">
+                    <input type="hidden" id="teacherId">
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Город *</label>
+                            <input type="text" id="city" required oninput="updateUsernamePreview()">
+                        </div>
+                        <div class="form-group">
+                            <label>Код города *</label>
+                            <input type="text" id="cityCode" required oninput="updateUsernamePreview()" pattern="[a-z0-9]{2,20}" title="Только латинские буквы и цифры, 2-20 символов">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Школа *</label>
+                            <input type="text" id="school" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Код школы *</label>
+                            <input type="text" id="schoolCode" required oninput="updateUsernamePreview()" pattern="[a-z0-9]{2,50}" title="Только латинские буквы и цифры, 2-50 символов">
+                        </div>
+                    </div>
+                    
+                    <div id="usernamePreview" class="username-preview" style="display: none;">
+                        Логин: <strong id="previewUsername"></strong>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Пароль</label>
+                        <div class="password-group">
+                            <input type="password" id="password" placeholder="Оставьте пустым для автогенерации">
+                            <button type="button" class="btn-generate" onclick="generatePassword()">🎲 Сгенерировать</button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Срок действия</label>
+                            <input type="date" id="expirationDate">
+                        </div>
+                        <div class="form-group">
+                            <label>Лимит тестов</label>
+                            <input type="number" id="maxTestsLimit" min="0" placeholder="Без ограничений">
+                        </div>
+                    </div>
+                    
+                    <div class="modal-actions">
+                        <button type="button" onclick="closeModal()" style="padding: 10px 20px; background: #95a5a6; color: white; border: none; border-radius: 6px; cursor: pointer;">Отмена</button>
+                        <button type="submit" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">Сохранить</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let teachers = [];
+        
+        async function loadTeachers() {
+            try {
+                document.getElementById('loading').style.display = 'block';
+                document.getElementById('error').style.display = 'none';
+                
+                const response = await fetch('/admin/teachers');
+                const data = await response.json();
+                
+                if (data.success) {
+                    teachers = data.teachers;
+                    renderTeachers();
+                } else {
+                    showError(data.error || 'Ошибка загрузки учителей');
+                }
+            } catch (error) {
+                showError('Ошибка: ' + error.message);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+        
+        function renderTeachers() {
+            const tbody = document.getElementById('teachersBody');
+            tbody.innerHTML = '';
+            
+            if (teachers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px;">Нет учителей</td></tr>';
+                return;
+            }
+            
+            teachers.forEach(teacher => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>${teacher.username}</strong></td>
+                    <td>${teacher.city || '-'}</td>
+                    <td>${teacher.school || '-'}</td>
+                    <td><span class="status-badge ${teacher.is_active ? 'status-active' : 'status-inactive'}">${teacher.is_active ? 'Активен' : 'Неактивен'}</span></td>
+                    <td>${teacher.tests_count || 0}</td>
+                    <td>${teacher.expiration_date ? new Date(teacher.expiration_date).toLocaleDateString('ru-RU') : 'Бессрочно'}</td>
+                    <td>
+                        <button class="btn-action btn-edit" onclick="editTeacher(${teacher.id})">✏️</button>
+                        <button class="btn-action btn-reset" onclick="resetPassword(${teacher.id})">🔑</button>
+                        <button class="btn-action btn-delete" onclick="deleteTeacher(${teacher.id})">🗑️</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            
+            document.getElementById('teachersTable').style.display = 'table';
+        }
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+        
+        function updateUsernamePreview() {
+            const cityCode = document.getElementById('cityCode').value.toLowerCase().trim();
+            const schoolCode = document.getElementById('schoolCode').value.toLowerCase().trim();
+            
+            if (cityCode && schoolCode) {
+                const username = cityCode + schoolCode;
+                document.getElementById('previewUsername').textContent = username;
+                document.getElementById('usernamePreview').style.display = 'block';
+            } else {
+                document.getElementById('usernamePreview').style.display = 'none';
+            }
+        }
+        
+        function generatePassword() {
+            fetch('/admin/teachers/generate-password', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({length: 12})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('password').value = data.password;
+                    document.getElementById('password').type = 'text';
+                    setTimeout(() => {
+                        document.getElementById('password').type = 'password';
+                    }, 5000);
+                }
+            });
+        }
+        
+        function openCreateModal() {
+            document.getElementById('modalTitle').textContent = 'Добавить учителя';
+            document.getElementById('teacherForm').reset();
+            document.getElementById('teacherId').value = '';
+            document.getElementById('usernamePreview').style.display = 'none';
+            document.getElementById('teacherModal').style.display = 'block';
+        }
+        
+        function editTeacher(id) {
+            const teacher = teachers.find(t => t.id === id);
+            if (!teacher) return;
+            
+            document.getElementById('modalTitle').textContent = 'Редактировать учителя';
+            document.getElementById('teacherId').value = teacher.id;
+            document.getElementById('city').value = teacher.city || '';
+            document.getElementById('cityCode').value = teacher.city_code || '';
+            document.getElementById('school').value = teacher.school || '';
+            document.getElementById('schoolCode').value = teacher.school_code || '';
+            document.getElementById('expirationDate').value = teacher.expiration_date || '';
+            document.getElementById('maxTestsLimit').value = teacher.max_tests_limit || '';
+            document.getElementById('password').value = '';
+            document.getElementById('password').required = false;
+            updateUsernamePreview();
+            document.getElementById('teacherModal').style.display = 'block';
+        }
+        
+        function closeModal() {
+            document.getElementById('teacherModal').style.display = 'none';
+        }
+        
+        document.getElementById('teacherForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const id = document.getElementById('teacherId').value;
+            const data = {
+                city: document.getElementById('city').value.trim(),
+                city_code: document.getElementById('cityCode').value.trim().toLowerCase(),
+                school: document.getElementById('school').value.trim(),
+                school_code: document.getElementById('schoolCode').value.trim().toLowerCase(),
+                expiration_date: document.getElementById('expirationDate').value || null,
+                max_tests_limit: document.getElementById('maxTestsLimit').value ? parseInt(document.getElementById('maxTestsLimit').value) : null
+            };
+            
+            const password = document.getElementById('password').value.trim();
+            if (password) {
+                data.password = password;
+                data.generate_password = false;
+            } else if (!id) {
+                data.generate_password = true;
+            }
+            
+            try {
+                let response;
+                if (id) {
+                    response = await fetch(`/admin/teachers/${id}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(data)
+                    });
+                } else {
+                    response = await fetch('/admin/teachers', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(data)
+                    });
+                }
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    if (result.password && !id) {
+                        alert(`Учитель создан!\nЛогин: ${result.teacher.username}\nПароль: ${result.password}\n\nСохраните эти данные!`);
+                    } else {
+                        alert('Успешно сохранено!');
+                    }
+                    closeModal();
+                    loadTeachers();
+                } else {
+                    alert('Ошибка: ' + result.error);
+                }
+            } catch (error) {
+                alert('Ошибка: ' + error.message);
+            }
+        });
+        
+        async function resetPassword(id) {
+            if (!confirm('Сгенерировать новый пароль для этого учителя?')) return;
+            
+            try {
+                const response = await fetch(`/admin/teachers/${id}/reset-password`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({generate: true})
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(`Новый пароль: ${result.password}\n\nСохраните его!`);
+                } else {
+                    alert('Ошибка: ' + result.error);
+                }
+            } catch (error) {
+                alert('Ошибка: ' + error.message);
+            }
+        }
+        
+        async function deleteTeacher(id) {
+            const teacher = teachers.find(t => t.id === id);
+            if (!confirm(`Деактивировать учителя "${teacher.username}"?`)) return;
+            
+            try {
+                const response = await fetch(`/admin/teachers/${id}`, {
+                    method: 'DELETE'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('Учитель деактивирован');
+                    loadTeachers();
+                } else {
+                    alert('Ошибка: ' + result.error);
+                }
+            } catch (error) {
+                alert('Ошибка: ' + error.message);
+            }
+        }
+        
+        window.onclick = function(event) {
+            const modal = document.getElementById('teacherModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        };
+        
+        loadTeachers();
+    </script>
+</body>
+</html>
+
+
+

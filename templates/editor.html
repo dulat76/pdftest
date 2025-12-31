@@ -16,6 +16,14 @@
 
         <!-- Блок навигации -->
         <div class="editor-nav">
+            {% if role == 'superuser' %}
+            <a href="{{ url_for('admin_teachers_page') }}" class="nav-btn">
+                👥 Управление учителями
+            </a>
+            <a href="{{ url_for('admin_subjects_page') }}" class="nav-btn">
+                📚 Управление предметами
+            </a>
+            {% endif %}
             <a href="{{ url_for('ai_settings_page') }}" class="nav-btn">
                 ⚙️ Настройки AI
             </a>
@@ -64,6 +72,45 @@
                     <div class="form-group">
                         <label for="templateName">Название шаблона:</label>
                         <input type="text" id="templateName" class="input" placeholder="Введите название...">
+                    </div>
+
+                    <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div class="form-group">
+                            <label for="classNumber">Класс *:</label>
+                            <select id="classNumber" class="input" required onchange="updateTestUrlPreview()">
+                                <option value="">Выберите класс...</option>
+                                <option value="1">1 класс</option>
+                                <option value="2">2 класс</option>
+                                <option value="3">3 класс</option>
+                                <option value="4">4 класс</option>
+                                <option value="5">5 класс</option>
+                                <option value="6">6 класс</option>
+                                <option value="7">7 класс</option>
+                                <option value="8">8 класс</option>
+                                <option value="9">9 класс</option>
+                                <option value="10">10 класс</option>
+                                <option value="11">11 класс</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="subjectSelect">Предмет *:</label>
+                            <select id="subjectSelect" class="input" required onchange="updateTestUrlPreview()">
+                                <option value="">Загрузка...</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="topic">Тема теста *:</label>
+                        <input type="text" id="topic" class="input" placeholder="Например: Дроби и проценты" required oninput="updateTestUrlPreview()">
+                        <small style="color: #666; font-size: 12px;">Используется для создания уникальной ссылки</small>
+                    </div>
+
+                    <div class="form-group" id="testUrlPreview" style="display: none; background: #e9ecef; padding: 10px; border-radius: 6px; margin-top: 10px;">
+                        <label style="font-size: 12px; color: #666;">Ссылка для студентов:</label>
+                        <div style="font-family: monospace; font-size: 12px; word-break: break-all; margin-top: 5px;" id="testUrlText"></div>
+                        <button type="button" onclick="copyTestUrl()" style="margin-top: 5px; padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">📋 Копировать</button>
                     </div>
 
                     <div class="form-group">
