@@ -276,6 +276,8 @@
                     const sortedClasses = [...subject.classes].sort((a, b) => a - b);
                     classesDisplay = sortedClasses.join(', ');
                 }
+                // Убеждаемся, что id - число
+                const subjectId = typeof subject.id === 'string' ? parseInt(subject.id) : subject.id;
                 tr.innerHTML = `
                     <td><strong>${subject.name}</strong></td>
                     <td><code style="background: #e9ecef; padding: 2px 6px; border-radius: 3px;">${subject.name_slug}</code></td>
@@ -283,8 +285,8 @@
                     <td>${subject.description || '-'}</td>
                     <td><span class="status-badge ${subject.is_active ? 'status-active' : 'status-inactive'}">${subject.is_active ? 'Активен' : 'Неактивен'}</span></td>
                     <td>
-                        <button class="btn-action btn-edit" onclick="editSubject(${subject.id})">✏️</button>
-                        <button class="btn-action btn-delete" onclick="deleteSubject(${subject.id})">🗑️</button>
+                        <button class="btn-action btn-edit" onclick="editSubject(${subjectId})">✏️</button>
+                        <button class="btn-action btn-delete" onclick="deleteSubject(${subjectId})">🗑️</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
