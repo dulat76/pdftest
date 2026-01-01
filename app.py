@@ -751,6 +751,29 @@ def update_teacher(teacher_id):
             db.close()
             return jsonify({'success': False, 'error': 'Учитель не найден'}), 404
         
+        # Обновление логина
+        if 'username' in data and data['username']:
+            new_username = sanitize_username(data['username'].strip())
+            if not new_username:
+                db.close()
+                return jsonify({
+                    'success': False,
+                    'error': 'Логин не может быть пустым'
+                }), 400
+            # Проверка уникальности логина только если логин изменился
+            if new_username != teacher.username:
+                existing_username = db.query(User).filter(
+                    User.username == new_username,
+                    User.id != teacher_id
+                ).first()
+                if existing_username:
+                    db.close()
+                    return jsonify({
+                        'success': False,
+                        'error': f'Пользователь с логином "{new_username}" уже существует'
+                    }), 400
+                teacher.username = new_username
+        
         # Обновление полей ФИО и email
         if 'first_name' in data:
             teacher.first_name = data['first_name'].strip()
