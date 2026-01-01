@@ -278,11 +278,30 @@ def validate_teacher_data(data: Dict[str, Any]) -> None:
     Raises:
         ValidationError: If validation fails
     """
-    required_fields = ['city', 'city_code', 'school', 'school_code']
+    required_fields = ['first_name', 'last_name', 'email', 'city', 'city_code', 'school', 'school_code']
     
     for field in required_fields:
         if field not in data or not data[field]:
             raise ValidationError(f"Не указано обязательное поле: {field}")
+    
+    # Validate first_name
+    first_name = data['first_name'].strip()
+    if len(first_name) < 2:
+        raise ValidationError("Имя слишком короткое (минимум 2 символа)")
+    if len(first_name) > 100:
+        raise ValidationError("Имя слишком длинное (максимум 100 символов)")
+    
+    # Validate last_name
+    last_name = data['last_name'].strip()
+    if len(last_name) < 2:
+        raise ValidationError("Фамилия слишком короткая (минимум 2 символа)")
+    if len(last_name) > 100:
+        raise ValidationError("Фамилия слишком длинная (максимум 100 символов)")
+    
+    # Validate email
+    email = data['email'].strip()
+    if not validate_email(email):
+        raise ValidationError("Некорректный формат email")
     
     # Validate city
     city = data['city'].strip()
@@ -355,6 +374,48 @@ def validate_school_code(code: str) -> bool:
         return False
     
     return True
+
+
+def validate_email(email: str) -> bool:
+    """
+    Validate email format using regex.
+    
+    Args:
+        email: Email address to validate
+        
+    Returns:
+        bool: True if email is valid, False otherwise
+    """
+    if not email:
+        return False
+    # Базовый паттерн для email
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return bool(re.match(pattern, email))
+
+
+def validate_subject_classes(classes: List[int]) -> None:
+    """
+    Validate subject classes.
+    
+    Args:
+        classes: List of class numbers (1-11)
+        
+    Raises:
+        ValidationError: If validation fails
+    """
+    if not classes or len(classes) == 0:
+        raise ValidationError("Необходимо выбрать хотя бы один класс")
+    
+    # Проверка уникальности
+    if len(classes) != len(set(classes)):
+        raise ValidationError("Классы не должны повторяться")
+    
+    # Проверка диапазона (1-11)
+    for class_num in classes:
+        if not isinstance(class_num, int):
+            raise ValidationError(f"Класс должен быть числом: {class_num}")
+        if class_num < 1 or class_num > 11:
+            raise ValidationError(f"Класс должен быть от 1 до 11: {class_num}")
 
 
 def validate_username_format(username: str) -> bool:

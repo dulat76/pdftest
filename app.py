@@ -13,8 +13,8 @@ from auth_utils import auth_manager, login_required, superuser_required
 from ai_checker import AIAnswerChecker
 from dataclasses import asdict
 from flask import send_from_directory
-from models import SessionLocal, User, Template, AuditLog, Subject
-from validators import ValidationError, validate_teacher_data, validate_topic, validate_topic_slug
+from models import SessionLocal, User, Template, AuditLog, Subject, SubjectClass
+from validators import ValidationError, validate_teacher_data, validate_topic, validate_topic_slug, validate_subject_classes
 from utils import generate_username, generate_topic_slug, generate_random_password
 
 AI_AVAILABLE = False
@@ -504,6 +504,9 @@ def list_teachers():
             teachers_data.append({
                 'id': teacher.id,
                 'username': teacher.username,
+                'first_name': teacher.first_name,
+                'last_name': teacher.last_name,
+                'email': teacher.email,
                 'city': teacher.city,
                 'city_code': teacher.city_code,
                 'school': teacher.school,
@@ -574,7 +577,7 @@ def create_teacher():
         # Генерация логина
         username = generate_username(data['city_code'], data['school_code'])
         
-        # Проверка уникальности логина
+        # Проверка уникальности логина и email
         db = SessionLocal()
         existing_user = db.query(User).filter(User.username == username).first()
         if existing_user:
@@ -582,6 +585,15 @@ def create_teacher():
             return jsonify({
                 'success': False,
                 'error': f'Пользователь с логином "{username}" уже существует'
+            }), 400
+        
+        # Проверка уникальности email
+        existing_email = db.query(User).filter(User.email == data['email'].strip()).first()
+        if existing_email:
+            db.close()
+            return jsonify({
+                'success': False,
+                'error': f'Пользователь с email "{data["email"]}" уже существует'
             }), 400
         
         # Генерация пароля
@@ -613,6 +625,9 @@ def create_teacher():
             username=username,
             password=password,
             role='teacher',
+            first_name=data['first_name'].strip(),
+            last_name=data['last_name'].strip(),
+            email=data['email'].strip(),
             city=data['city'],
             city_code=data['city_code'],
             school=data['school'],
@@ -680,6 +695,9 @@ def get_teacher(teacher_id):
         teacher_data = {
             'id': teacher.id,
             'username': teacher.username,
+            'first_name': teacher.first_name,
+            'last_name': teacher.last_name,
+            'email': teacher.email,
             'city': teacher.city,
             'city_code': teacher.city_code,
             'school': teacher.school,
@@ -715,6 +733,27 @@ def update_teacher(teacher_id):
         if not teacher:
             db.close()
             return jsonify({'success': False, 'error': 'Учитель не найден'}), 404
+        
+        # Обновление полей ФИО и email
+        if 'first_name' in data:
+            teacher.first_name = data['first_name'].strip()
+        if 'last_name' in data:
+            teacher.last_name = data['last_name'].strip()
+        if 'email' in data:
+            new_email = data['email'].strip()
+            # Проверка уникальности email только если email изменился
+            if new_email != teacher.email:
+                existing_email = db.query(User).filter(
+                    User.email == new_email,
+                    User.id != teacher_id
+                ).first()
+                if existing_email:
+                    db.close()
+                    return jsonify({
+                        'success': False,
+                        'error': f'Пользователь с email "{new_email}" уже существует'
+                    }), 400
+                teacher.email = new_email
         
         # Обновление полей
         if 'city' in data:
@@ -884,6 +923,65 @@ def get_audit_logs():
 
 
 # ==========================
+# API ДЛЯ ПОЛУЧЕНИЯ СПИСКОВ ГОРОДОВ И ШКОЛ
+# ==========================
+
+@app.route('/api/admin/cities', methods=['GET'])
+@superuser_required
+def get_cities():
+    """Получить список уникальных городов из БД"""
+    try:
+        db = SessionLocal()
+        cities = db.query(User.city).filter(
+            User.city.isnot(None),
+            User.city != ''
+        ).distinct().order_by(User.city).all()
+        
+        cities_list = [city[0] for city in cities if city[0]]
+        
+        db.close()
+        
+        return jsonify({
+            'success': True,
+            'cities': cities_list
+        })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/schools', methods=['GET'])
+@superuser_required
+def get_schools():
+    """Получить список уникальных школ из БД (с опциональным фильтром по городу)"""
+    try:
+        db = SessionLocal()
+        city_filter = request.args.get('city')
+        
+        query = db.query(User.school).filter(
+            User.school.isnot(None),
+            User.school != ''
+        )
+        
+        if city_filter:
+            query = query.filter(User.city == city_filter)
+        
+        schools = query.distinct().order_by(User.school).all()
+        
+        schools_list = [school[0] for school in schools if school[0]]
+        
+        db.close()
+        
+        return jsonify({
+            'success': True,
+            'schools': schools_list
+        })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==========================
 # API ДЛЯ УПРАВЛЕНИЯ ПРЕДМЕТАМИ
 # ==========================
 
@@ -895,14 +993,23 @@ def list_subjects():
         db = SessionLocal()
         subjects = db.query(Subject).filter(Subject.is_active == True).order_by(Subject.name).all()
         
-        subjects_data = [{
-            'id': s.id,
-            'name': s.name,
-            'name_slug': s.name_slug,
-            'description': s.description,
-            'is_active': s.is_active,
-            'created_at': s.created_at.isoformat() if s.created_at else None
-        } for s in subjects]
+        subjects_data = []
+        for s in subjects:
+            # Получаем классы для предмета
+            classes = db.query(SubjectClass.class_number).filter(
+                SubjectClass.subject_id == s.id
+            ).order_by(SubjectClass.class_number).all()
+            classes_list = [c[0] for c in classes]
+            
+            subjects_data.append({
+                'id': s.id,
+                'name': s.name,
+                'name_slug': s.name_slug,
+                'description': s.description,
+                'is_active': s.is_active,
+                'classes': classes_list,
+                'created_at': s.created_at.isoformat() if s.created_at else None
+            })
         
         db.close()
         
@@ -952,6 +1059,22 @@ def create_subject():
                 'error': 'Название предмета обязательно'
             }), 400
         
+        # Валидация классов
+        classes = data.get('classes', [])
+        if not isinstance(classes, list):
+            return jsonify({
+                'success': False,
+                'error': 'Классы должны быть массивом'
+            }), 400
+        
+        try:
+            validate_subject_classes(classes)
+        except ValidationError as e:
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 400
+        
         name = data['name'].strip()
         name_slug = generate_topic_slug(name)  # Используем ту же функцию для генерации slug
         
@@ -978,6 +1101,16 @@ def create_subject():
         )
         
         db.add(subject)
+        db.flush()  # Получаем ID предмета
+        
+        # Создание связей с классами
+        for class_num in classes:
+            subject_class = SubjectClass(
+                subject_id=subject.id,
+                class_number=class_num
+            )
+            db.add(subject_class)
+        
         db.commit()
         subject_id = subject.id
         db.close()
@@ -995,7 +1128,8 @@ def create_subject():
             'subject': {
                 'id': subject_id,
                 'name': name,
-                'name_slug': name_slug
+                'name_slug': name_slug,
+                'classes': classes
             },
             'message': f'Предмет "{name}" успешно создан'
         }), 201
@@ -1044,6 +1178,36 @@ def update_subject(subject_id):
         
         if 'is_active' in data:
             subject.is_active = data['is_active']
+        
+        # Обновление классов
+        if 'classes' in data:
+            classes = data['classes']
+            if not isinstance(classes, list):
+                db.close()
+                return jsonify({
+                    'success': False,
+                    'error': 'Классы должны быть массивом'
+                }), 400
+            
+            try:
+                validate_subject_classes(classes)
+            except ValidationError as e:
+                db.close()
+                return jsonify({
+                    'success': False,
+                    'error': str(e)
+                }), 400
+            
+            # Удаляем старые связи
+            db.query(SubjectClass).filter(SubjectClass.subject_id == subject_id).delete()
+            
+            # Создаем новые связи
+            for class_num in classes:
+                subject_class = SubjectClass(
+                    subject_id=subject_id,
+                    class_number=class_num
+                )
+                db.add(subject_class)
         
         subject.updated_at = datetime.utcnow()
         

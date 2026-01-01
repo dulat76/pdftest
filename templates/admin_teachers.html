@@ -181,6 +181,8 @@
             <thead>
                 <tr>
                     <th>Логин</th>
+                    <th>ФИО</th>
+                    <th>Email</th>
                     <th>Город</th>
                     <th>Школа</th>
                     <th>Статус</th>
@@ -201,8 +203,25 @@
                     
                     <div class="form-row">
                         <div class="form-group">
+                            <label>Фамилия *</label>
+                            <input type="text" id="lastName" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Имя *</label>
+                            <input type="text" id="firstName" required>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Email *</label>
+                        <input type="email" id="email" required>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
                             <label>Город *</label>
-                            <input type="text" id="city" required oninput="updateUsernamePreview()">
+                            <input type="text" id="city" list="citiesList" required oninput="updateUsernamePreview(); filterCities(this.value)">
+                            <datalist id="citiesList"></datalist>
                         </div>
                         <div class="form-group">
                             <label>Код города *</label>
@@ -213,7 +232,8 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Школа *</label>
-                            <input type="text" id="school" required>
+                            <input type="text" id="school" list="schoolsList" required oninput="filterSchools(this.value)">
+                            <datalist id="schoolsList"></datalist>
                         </div>
                         <div class="form-group">
                             <label>Код школы *</label>
@@ -282,14 +302,17 @@
             tbody.innerHTML = '';
             
             if (teachers.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px;">Нет учителей</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 40px;">Нет учителей</td></tr>';
                 return;
             }
             
             teachers.forEach(teacher => {
                 const tr = document.createElement('tr');
+                const fullName = `${teacher.last_name || ''} ${teacher.first_name || ''}`.trim() || '-';
                 tr.innerHTML = `
                     <td><strong>${teacher.username}</strong></td>
+                    <td>${fullName}</td>
+                    <td>${teacher.email || '-'}</td>
                     <td>${teacher.city || '-'}</td>
                     <td>${teacher.school || '-'}</td>
                     <td><span class="status-badge ${teacher.is_active ? 'status-active' : 'status-inactive'}">${teacher.is_active ? 'Активен' : 'Неактивен'}</span></td>
@@ -350,6 +373,8 @@
             document.getElementById('teacherId').value = '';
             document.getElementById('usernamePreview').style.display = 'none';
             document.getElementById('teacherModal').style.display = 'block';
+            loadCities();
+            loadSchools();
         }
         
         function editTeacher(id) {
@@ -358,10 +383,19 @@
             
             document.getElementById('modalTitle').textContent = 'Редактировать учителя';
             document.getElementById('teacherId').value = teacher.id;
+            document.getElementById('firstName').value = teacher.first_name || '';
+            document.getElementById('lastName').value = teacher.last_name || '';
+            document.getElementById('email').value = teacher.email || '';
             document.getElementById('city').value = teacher.city || '';
             document.getElementById('cityCode').value = teacher.city_code || '';
             document.getElementById('school').value = teacher.school || '';
             document.getElementById('schoolCode').value = teacher.school_code || '';
+            loadCities();
+            if (teacher.city) {
+                loadSchools(teacher.city);
+            } else {
+                loadSchools();
+            }
             document.getElementById('expirationDate').value = teacher.expiration_date || '';
             document.getElementById('maxTestsLimit').value = teacher.max_tests_limit || '';
             document.getElementById('password').value = '';
@@ -379,6 +413,9 @@
             
             const id = document.getElementById('teacherId').value;
             const data = {
+                first_name: document.getElementById('firstName').value.trim(),
+                last_name: document.getElementById('lastName').value.trim(),
+                email: document.getElementById('email').value.trim(),
                 city: document.getElementById('city').value.trim(),
                 city_code: document.getElementById('cityCode').value.trim().toLowerCase(),
                 school: document.getElementById('school').value.trim(),

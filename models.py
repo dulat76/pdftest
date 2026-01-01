@@ -2,7 +2,7 @@
 from datetime import datetime, date
 from sqlalchemy import create_engine, Column, Integer, String, Text, Float, Boolean, DateTime, Date, JSON, Index
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.pool import QueuePool
 import os
 from dotenv import load_dotenv
@@ -56,10 +56,14 @@ class User(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(100), unique=True, nullable=False, index=True)
-    email = Column(String(255), unique=True, nullable=True)
+    email = Column(String(255), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
+    
+    # Поля ФИО
+    first_name = Column(String(100), nullable=False)
+    last_name = Column(String(100), nullable=False)
     
     # Новые поля для учителей
     role = Column(String(20), nullable=False, default='teacher', index=True)  # 'superuser' или 'teacher'
@@ -118,6 +122,28 @@ class Subject(Base):
     is_active = Column(Boolean, default=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationship для доступа к классам (будет установлено после определения SubjectClass)
+
+
+class SubjectClass(Base):
+    """Many-to-many relationship between subjects and classes."""
+    __tablename__ = 'subject_classes'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    subject_id = Column(Integer, nullable=False, index=True)
+    class_number = Column(Integer, nullable=False)  # Класс от 1 до 11
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Уникальный индекс на (subject_id, class_number)
+    __table_args__ = (
+        Index('idx_subject_class_unique', 'subject_id', 'class_number', unique=True),
+    )
+
+
+# Установка relationship после определения SubjectClass
+Subject.classes = relationship('SubjectClass', backref='subject', lazy='dynamic', cascade='all, delete-orphan')
 
 
 class StudentResult(Base):

@@ -149,6 +149,7 @@
                 <tr>
                     <th>Название</th>
                     <th>Slug</th>
+                    <th>Классы</th>
                     <th>Описание</th>
                     <th>Статус</th>
                     <th>Действия</th>
@@ -167,6 +168,57 @@
                     <div class="form-group">
                         <label>Название предмета *</label>
                         <input type="text" id="subjectName" required placeholder="Например: Математика">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Классы *</label>
+                        <div id="classesCheckboxGroup" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px;">
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="class-checkbox" value="1" style="margin-right: 5px;">
+                                <span>1</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="class-checkbox" value="2" style="margin-right: 5px;">
+                                <span>2</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="class-checkbox" value="3" style="margin-right: 5px;">
+                                <span>3</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="class-checkbox" value="4" style="margin-right: 5px;">
+                                <span>4</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="class-checkbox" value="5" style="margin-right: 5px;">
+                                <span>5</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="class-checkbox" value="6" style="margin-right: 5px;">
+                                <span>6</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="class-checkbox" value="7" style="margin-right: 5px;">
+                                <span>7</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="class-checkbox" value="8" style="margin-right: 5px;">
+                                <span>8</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="class-checkbox" value="9" style="margin-right: 5px;">
+                                <span>9</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="class-checkbox" value="10" style="margin-right: 5px;">
+                                <span>10</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="class-checkbox" value="11" style="margin-right: 5px;">
+                                <span>11</span>
+                            </label>
+                        </div>
+                        <small style="color: #666; display: block; margin-top: 5px;">Выберите хотя бы один класс</small>
                     </div>
                     
                     <div class="form-group">
@@ -212,15 +264,22 @@
             tbody.innerHTML = '';
             
             if (subjects.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px;">Нет предметов</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px;">Нет предметов</td></tr>';
                 return;
             }
             
             subjects.forEach(subject => {
                 const tr = document.createElement('tr');
+                // Форматирование классов: "1, 2, 3" или "1-5" если последовательные
+                let classesDisplay = '-';
+                if (subject.classes && subject.classes.length > 0) {
+                    const sortedClasses = [...subject.classes].sort((a, b) => a - b);
+                    classesDisplay = sortedClasses.join(', ');
+                }
                 tr.innerHTML = `
                     <td><strong>${subject.name}</strong></td>
                     <td><code style="background: #e9ecef; padding: 2px 6px; border-radius: 3px;">${subject.name_slug}</code></td>
+                    <td>${classesDisplay}</td>
                     <td>${subject.description || '-'}</td>
                     <td><span class="status-badge ${subject.is_active ? 'status-active' : 'status-inactive'}">${subject.is_active ? 'Активен' : 'Неактивен'}</span></td>
                     <td>
@@ -244,6 +303,8 @@
             document.getElementById('modalTitle').textContent = 'Добавить предмет';
             document.getElementById('subjectForm').reset();
             document.getElementById('subjectId').value = '';
+            // Сброс всех checkbox классов
+            document.querySelectorAll('.class-checkbox').forEach(cb => cb.checked = false);
             document.getElementById('subjectModal').style.display = 'block';
         }
         
@@ -255,6 +316,10 @@
             document.getElementById('subjectId').value = subject.id;
             document.getElementById('subjectName').value = subject.name;
             document.getElementById('subjectDescription').value = subject.description || '';
+            // Отметить выбранные классы
+            document.querySelectorAll('.class-checkbox').forEach(cb => {
+                cb.checked = subject.classes && subject.classes.includes(parseInt(cb.value));
+            });
             document.getElementById('subjectModal').style.display = 'block';
         }
         
@@ -266,9 +331,20 @@
             e.preventDefault();
             
             const id = document.getElementById('subjectId').value;
+            // Получить выбранные классы
+            const selectedClasses = Array.from(document.querySelectorAll('.class-checkbox:checked'))
+                .map(cb => parseInt(cb.value))
+                .sort((a, b) => a - b);
+            
+            if (selectedClasses.length === 0) {
+                showError('Необходимо выбрать хотя бы один класс');
+                return;
+            }
+            
             const data = {
                 name: document.getElementById('subjectName').value.trim(),
-                description: document.getElementById('subjectDescription').value.trim()
+                description: document.getElementById('subjectDescription').value.trim(),
+                classes: selectedClasses
             };
             
             try {
