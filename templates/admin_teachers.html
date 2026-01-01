@@ -314,6 +314,8 @@
             teachers.forEach(teacher => {
                 const tr = document.createElement('tr');
                 const fullName = `${teacher.last_name || ''} ${teacher.first_name || ''}`.trim() || '-';
+                // Убеждаемся, что id - число
+                const teacherId = typeof teacher.id === 'string' ? parseInt(teacher.id) : teacher.id;
                 tr.innerHTML = `
                     <td><strong>${teacher.username}</strong></td>
                     <td>${fullName}</td>
@@ -324,9 +326,9 @@
                     <td>${teacher.tests_count || 0}</td>
                     <td>${teacher.expiration_date ? new Date(teacher.expiration_date).toLocaleDateString('ru-RU') : 'Бессрочно'}</td>
                     <td>
-                        <button class="btn-action btn-edit" onclick="editTeacher(${teacher.id})">✏️</button>
-                        <button class="btn-action btn-reset" onclick="resetPassword(${teacher.id})">🔑</button>
-                        <button class="btn-action btn-delete" onclick="deleteTeacher(${teacher.id})">🗑️</button>
+                        <button class="btn-action btn-edit" onclick="editTeacher(${teacherId})">✏️</button>
+                        <button class="btn-action btn-reset" onclick="resetPassword(${teacherId})">🔑</button>
+                        <button class="btn-action btn-delete" onclick="deleteTeacher(${teacherId})">🗑️</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
