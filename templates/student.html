@@ -139,14 +139,16 @@
                     currentTemplate = window.serverTemplateData;
                     
                     // Устанавливаем studentInfo для проверки ответов
-                    if (typeof studentInfo !== 'undefined') {
-                        studentInfo = {
-                            name: '',
-                            class: '',
-                            templateId: window.serverTemplateId,
-                            sheetUrl: window.serverTemplateData.sheet_url || null
-                        };
+                    // studentInfo должен быть объявлен в student.js, но если нет - создаем
+                    if (typeof studentInfo === 'undefined') {
+                        window.studentInfo = {};
                     }
+                    studentInfo = {
+                        name: '',
+                        class: '',
+                        templateId: window.serverTemplateId,
+                        sheetUrl: window.serverTemplateData.sheet_url || null
+                    };
                     
                     // Показываем область теста
                     const testArea = document.getElementById('testArea');
