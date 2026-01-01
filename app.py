@@ -1983,13 +1983,17 @@ def save_template():
                 db.close()
                 raise
         
+        # Сохраняем данные для логирования до закрытия сессии
+        template_id_for_log = template.id if template.id else None
+        is_update = template.id is not None
+        
         db.close()
         
-        # Логирование создания теста
+        # Логирование создания теста (после закрытия сессии)
         log_audit_action(
-            action='create_test' if not template.id else 'update_test',
+            action='update_test' if is_update else 'create_test',
             target_type='test',
-            target_id=template.id if template.id else None,
+            target_id=template_id_for_log,
             details={
                 'template_id': data['template_id'],
                 'topic': topic,
