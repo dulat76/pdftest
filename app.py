@@ -1915,6 +1915,7 @@ def save_template():
         
         if template:
             # Обновление существующего шаблона
+            print(f"[SAVE_TEMPLATE] Обновление существующего шаблона template_id={data['template_id']}")
             template.name = data.get('name', template.name)
             template.topic = topic
             template.topic_slug = topic_slug
@@ -1928,6 +1929,7 @@ def save_template():
             template.updated_at = datetime.utcnow()
         else:
             # Создание нового шаблона
+            print(f"[SAVE_TEMPLATE] Создание нового шаблона template_id={data['template_id']}")
             template = Template(
                 template_id=data['template_id'],
                 name=data.get('name', 'Без названия'),
@@ -1945,7 +1947,42 @@ def save_template():
             )
             db.add(template)
         
-        db.commit()
+        try:
+            db.commit()
+        except Exception as commit_error:
+            db.rollback()
+            # Если ошибка уникальности при коммите, значит шаблон уже существует - обновляем его
+            error_str = str(commit_error).lower()
+            if 'uniqueviolation' in error_str or 'duplicate key' in error_str or 'ix_templates_template_id' in error_str:
+                print(f"[SAVE_TEMPLATE] Ошибка уникальности при коммите, обновляем существующий шаблон template_id={data['template_id']}")
+                # Повторно запрашиваем шаблон
+                template = db.query(Template).filter(
+                    Template.template_id == data['template_id']
+                ).first()
+                if template:
+                    # Обновление существующего шаблона
+                    template.name = data.get('name', template.name)
+                    template.topic = topic
+                    template.topic_slug = topic_slug
+                    template.created_by_username = username
+                    template.class_number = class_number
+                    template.subject_id = subject_id
+                    template.fields = data.get('fields', template.fields)
+                    template.images = data.get('files', template.images)
+                    template.is_active = data.get('is_active', True)
+                    template.is_public = data.get('is_public', True)
+                    template.updated_at = datetime.utcnow()
+                    db.commit()
+                else:
+                    db.close()
+                    return jsonify({
+                        'error': f'Шаблон с ID {data["template_id"]} уже существует, но не найден для обновления. Попробуйте перезагрузить страницу.'
+                    }), 500
+            else:
+                # Другая ошибка - пробрасываем дальше
+                db.close()
+                raise
+        
         db.close()
         
         # Логирование создания теста
