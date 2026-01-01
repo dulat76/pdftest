@@ -1,6 +1,6 @@
 """Database models using SQLAlchemy."""
 from datetime import datetime, date
-from sqlalchemy import create_engine, Column, Integer, String, Text, Float, Boolean, DateTime, Date, JSON, Index
+from sqlalchemy import create_engine, Column, Integer, String, Text, Float, Boolean, DateTime, Date, JSON, Index, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.pool import QueuePool
@@ -131,7 +131,7 @@ class SubjectClass(Base):
     __tablename__ = 'subject_classes'
     
     id = Column(Integer, primary_key=True, index=True)
-    subject_id = Column(Integer, nullable=False, index=True)
+    subject_id = Column(Integer, ForeignKey('subjects.id', ondelete='CASCADE'), nullable=False, index=True)
     class_number = Column(Integer, nullable=False)  # Класс от 1 до 11
     
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -143,7 +143,7 @@ class SubjectClass(Base):
 
 
 # Установка relationship после определения SubjectClass
-Subject.classes = relationship('SubjectClass', backref='subject', lazy='dynamic', cascade='all, delete-orphan')
+Subject.classes = relationship('SubjectClass', backref='subject', lazy='dynamic', cascade='all, delete-orphan', primaryjoin='Subject.id == SubjectClass.subject_id')
 
 
 class StudentResult(Base):
