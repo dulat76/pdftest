@@ -1508,6 +1508,9 @@ def test_by_link(city_code, school_code, subject_slug, topic_slug):
         if os.path.exists(template_path):
             with open(template_path, 'r', encoding='utf-8') as f:
                 template_data = json.load(f)
+            # Убеждаемся, что используется 'files' для совместимости с фронтендом
+            if 'images' in template_data and 'files' not in template_data:
+                template_data['files'] = template_data['images']
         else:
             # Если файла нет, создаем данные из БД (используем сохраненные значения)
             # Преобразуем images в files для совместимости с фронтендом
