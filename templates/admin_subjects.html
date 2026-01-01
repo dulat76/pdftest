@@ -294,7 +294,10 @@
                     <td><span class="status-badge ${subject.is_active ? 'status-active' : 'status-inactive'}">${subject.is_active ? 'Активен' : 'Неактивен'}</span></td>
                     <td>
                         <button class="btn-action btn-edit" onclick="editSubject(${subjectId})">✏️</button>
-                        <button class="btn-action btn-delete" onclick="deleteSubject(${subjectId})">🗑️</button>
+                        ${subject.is_active ? 
+                            `<button class="btn-action btn-delete" onclick="deleteSubject(${subjectId})">🗑️</button>` :
+                            `<button class="btn-action" style="background: #27ae60; color: white;" onclick="activateSubject(${subjectId})">✓ Активировать</button>`
+                        }
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -313,6 +316,7 @@
             document.getElementById('modalTitle').textContent = 'Добавить предмет';
             document.getElementById('subjectForm').reset();
             document.getElementById('subjectId').value = '';
+            document.getElementById('subjectIsActive').checked = true; // По умолчанию активен
             // Сброс всех checkbox классов
             document.querySelectorAll('.class-checkbox').forEach(cb => cb.checked = false);
             document.getElementById('subjectModal').style.display = 'block';
@@ -326,6 +330,7 @@
             document.getElementById('subjectId').value = subject.id;
             document.getElementById('subjectName').value = subject.name;
             document.getElementById('subjectDescription').value = subject.description || '';
+            document.getElementById('subjectIsActive').checked = subject.is_active !== false; // По умолчанию true
             // Отметить выбранные классы
             document.querySelectorAll('.class-checkbox').forEach(cb => {
                 cb.checked = subject.classes && subject.classes.includes(parseInt(cb.value));
@@ -354,7 +359,8 @@
             const data = {
                 name: document.getElementById('subjectName').value.trim(),
                 description: document.getElementById('subjectDescription').value.trim(),
-                classes: selectedClasses
+                classes: selectedClasses,
+                is_active: document.getElementById('subjectIsActive').checked
             };
             
             try {
@@ -395,7 +401,7 @@
                 alert('Ошибка: Предмет не найден');
                 return;
             }
-            if (!confirm(`Деактивировать предмет "${subject.name}"?`)) return;
+            if (!confirm(`Удалить предмет "${subject.name}"?\n\nЭто действие нельзя отменить!`)) return;
             
             try {
                 const response = await fetch(`/api/admin/subjects/${subjectId}`, {
@@ -405,7 +411,42 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    alert('Предмет деактивирован');
+                    alert('Предмет удален');
+                    loadSubjects();
+                } else {
+                    alert('Ошибка: ' + result.error);
+                }
+            } catch (error) {
+                alert('Ошибка: ' + error.message);
+            }
+        }
+        
+        async function activateSubject(id) {
+            // Преобразуем id в число для сравнения
+            const subjectId = typeof id === 'string' ? parseInt(id) : id;
+            const subject = subjects.find(s => (s.id === subjectId) || (s.id === id));
+            if (!subject) {
+                alert('Ошибка: Предмет не найден');
+                return;
+            }
+            if (!confirm(`Активировать предмет "${subject.name}"?`)) return;
+            
+            try {
+                const response = await fetch(`/api/admin/subjects/${subjectId}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        name: subject.name,
+                        description: subject.description || '',
+                        classes: subject.classes || [],
+                        is_active: true
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('Предмет активирован');
                     loadSubjects();
                 } else {
                     alert('Ошибка: ' + result.error);
