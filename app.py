@@ -2316,10 +2316,31 @@ def check_answers():
                         }
 
                         log_file_path = os.path.join(Config.BASE_DIR, AIConfig.AI_LOG_FILE)
-                        os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
+                        log_dir = os.path.dirname(log_file_path)
+                        
+                        # Создаем директорию с правильными правами
+                        if not os.path.exists(log_dir):
+                            os.makedirs(log_dir, mode=0o755, exist_ok=True)
+                        elif not os.access(log_dir, os.W_OK):
+                            # Если директория существует, но нет прав на запись, пытаемся изменить права
+                            try:
+                                os.chmod(log_dir, 0o755)
+                            except Exception as perm_error:
+                                print(f"Не удалось изменить права доступа к {log_dir}: {perm_error}")
 
-                        with open(log_file_path, 'a', encoding='utf-8') as log_f:
-                            log_f.write(json.dumps(log_entry, ensure_ascii=False, indent=None) + '\n')
+                        # Записываем в файл с обработкой ошибок прав доступа
+                        try:
+                            with open(log_file_path, 'a', encoding='utf-8') as log_f:
+                                log_f.write(json.dumps(log_entry, ensure_ascii=False, indent=None) + '\n')
+                            # Устанавливаем права на файл после создания/записи
+                            if os.path.exists(log_file_path):
+                                try:
+                                    os.chmod(log_file_path, 0o644)
+                                except Exception:
+                                    pass  # Игнорируем ошибки установки прав на файл
+                        except PermissionError as perm_err:
+                            print(f"Ошибка прав доступа при записи в лог-файл {log_file_path}: {perm_err}")
+                            # Не прерываем выполнение, просто не логируем
 
                 except Exception as ai_err:
                     ai_error = str(ai_err)
