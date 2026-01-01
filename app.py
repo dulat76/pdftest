@@ -1481,8 +1481,16 @@ def test_by_link(city_code, school_code, subject_slug, topic_slug):
         
         print(f"[TEST_BY_LINK] Тест найден: template_id={template.template_id}, topic={template.topic}")
         
+        # Сохраняем данные для использования после закрытия сессии
+        template_id = template.template_id
+        template_name = template.name
+        template_topic = template.topic
+        template_fields = template.fields or []
+        template_images = template.images or []
+        template_is_public = template.is_public
+        
         # Проверка публичности теста
-        if not template.is_public:
+        if not template_is_public:
             db.close()
             return render_template('error.html',
                 error_code=403,
