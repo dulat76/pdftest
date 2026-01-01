@@ -1522,6 +1522,7 @@ def test_by_link(city_code, school_code, subject_slug, topic_slug):
             # Убеждаемся, что используется 'files' для совместимости с фронтендом
             if 'images' in template_data and 'files' not in template_data:
                 template_data['files'] = template_data['images']
+            print(f"[TEST_BY_LINK] Загружен sheet_url из файла: {template_data.get('sheet_url', 'не указан')}")
         else:
             # Если файла нет, создаем данные из БД (используем сохраненные значения)
             # Преобразуем images в files для совместимости с фронтендом
