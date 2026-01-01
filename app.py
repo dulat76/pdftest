@@ -813,7 +813,7 @@ def update_teacher(teacher_id):
 @app.route('/api/admin/teachers/<int:teacher_id>', methods=['DELETE'])
 @superuser_required
 def delete_teacher(teacher_id):
-    """Удаление учителя (мягкое удаление через is_active=False)"""
+    """Удаление учителя (физическое удаление из БД)"""
     try:
         db = SessionLocal()
         
@@ -826,13 +826,17 @@ def delete_teacher(teacher_id):
             db.close()
             return jsonify({'success': False, 'error': 'Учитель не найден'}), 404
         
-        # Сохраняем данные для логирования до закрытия сессии
+        # Сохраняем данные для логирования до удаления
         username = teacher.username
+        teacher_data = {
+            'username': username,
+            'first_name': teacher.first_name,
+            'last_name': teacher.last_name,
+            'email': teacher.email
+        }
         
-        # Мягкое удаление
-        teacher.is_active = False
-        teacher.updated_at = datetime.utcnow()
-        
+        # Физическое удаление
+        db.delete(teacher)
         db.commit()
         db.close()
         
@@ -841,12 +845,14 @@ def delete_teacher(teacher_id):
             action='delete_teacher',
             target_type='teacher',
             target_id=teacher_id,
-            details={'username': username}
+            details=teacher_data
         )
         
-        return jsonify({'success': True, 'message': 'Учитель деактивирован'})
+        return jsonify({'success': True, 'message': 'Учитель удален'})
     
     except Exception as e:
+        db.rollback()
+        db.close()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

@@ -506,7 +506,7 @@
                 alert('Ошибка: Учитель не найден');
                 return;
             }
-            if (!confirm(`Деактивировать учителя "${teacher.username}"?`)) return;
+            if (!confirm(`Удалить учителя "${teacher.username}"?\n\nЭто действие нельзя отменить!`)) return;
             
             try {
                 const response = await fetch(`/api/admin/teachers/${teacherId}`, {
@@ -516,7 +516,7 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    alert('Учитель деактивирован');
+                    alert('Учитель удален');
                     loadTeachers();
                 } else {
                     alert('Ошибка: ' + result.error);
