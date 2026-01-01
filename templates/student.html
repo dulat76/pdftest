@@ -138,6 +138,16 @@
                 if (typeof currentTemplate !== 'undefined') {
                     currentTemplate = window.serverTemplateData;
                     
+                    // Устанавливаем studentInfo для проверки ответов
+                    if (typeof studentInfo !== 'undefined') {
+                        studentInfo = {
+                            name: '',
+                            class: '',
+                            templateId: window.serverTemplateId,
+                            sheetUrl: window.serverTemplateData.sheet_url || null
+                        };
+                    }
+                    
                     // Показываем область теста
                     const testArea = document.getElementById('testArea');
                     if (testArea) {

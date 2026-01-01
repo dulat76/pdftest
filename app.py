@@ -2156,14 +2156,37 @@ def check_answers():
         student_info = data.get('student_info', {})
         sheet_url = data.get('sheet_url')
 
-        # Загружаем шаблон
-        template_path = os.path.join(Config.TEMPLATES_FOLDER, f"{template_id}.json")
-        if not os.path.exists(template_path):
-            return jsonify({"success": False, "error": "Шаблон не найден"}), 404
+        if not template_id:
+            return jsonify({"success": False, "error": "Не указан template_id"}), 400
 
-        # КРИТИЧНО: Явно указываем кодировку UTF-8 при чтении
-        with open(template_path, 'r', encoding='utf-8') as f:
-            template = json.load(f)
+        # Загружаем шаблон (сначала из файла, потом из БД)
+        template_path = os.path.join(Config.TEMPLATES_FOLDER, f"{template_id}.json")
+        template = None
+        
+        if os.path.exists(template_path):
+            # Загружаем из файла
+            with open(template_path, 'r', encoding='utf-8') as f:
+                template = json.load(f)
+        else:
+            # Если файла нет, загружаем из БД
+            db = SessionLocal()
+            db_template = db.query(Template).filter(Template.template_id == template_id).first()
+            if db_template:
+                # Преобразуем данные из БД в формат шаблона
+                template_fields = db_template.fields if isinstance(db_template.fields, list) else (json.loads(db_template.fields) if isinstance(db_template.fields, str) else [])
+                template_images = db_template.images if isinstance(db_template.images, list) else (json.loads(db_template.images) if isinstance(db_template.images, str) else [])
+                template = {
+                    'template_id': db_template.template_id,
+                    'name': db_template.name,
+                    'topic': db_template.topic,
+                    'fields': template_fields,
+                    'files': template_images,  # Используем 'files' для совместимости
+                    'images': template_images  # Также сохраняем 'images' для обратной совместимости
+                }
+            db.close()
+        
+        if not template:
+            return jsonify({"success": False, "error": "Шаблон не найден"}), 404
 
         template_name = template.get("name", template_id)
         fields = template.get('fields', [])
