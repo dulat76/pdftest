@@ -829,7 +829,12 @@ def update_teacher(teacher_id):
         
         return jsonify({'success': True, 'message': 'Данные учителя обновлены'})
     
+    except ValidationError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
+        import traceback
+        print(f"Ошибка при обновлении учителя {teacher_id}: {e}")
+        print(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

@@ -443,6 +443,7 @@
             try {
                 let response;
                 if (id) {
+                    console.log('Редактирование учителя:', id, data);
                     response = await fetch(`/api/admin/teachers/${id}`, {
                         method: 'PUT',
                         headers: {'Content-Type': 'application/json'},
@@ -456,7 +457,9 @@
                     });
                 }
                 
+                console.log('Статус ответа:', response.status);
                 const result = await response.json();
+                console.log('Ответ сервера:', result);
                 
                 if (result.success) {
                     if (result.password && !id) {
@@ -467,9 +470,10 @@
                     closeModal();
                     loadTeachers();
                 } else {
-                    alert('Ошибка: ' + result.error);
+                    alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
                 }
             } catch (error) {
+                console.error('Ошибка при сохранении:', error);
                 alert('Ошибка: ' + error.message);
             }
         });
