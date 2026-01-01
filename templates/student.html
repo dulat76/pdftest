@@ -115,6 +115,45 @@
         </div>
     </div>
 
+    {% if template_data %}
+    <script>
+        // Передаем данные теста в глобальную переменную для использования в student.js
+        window.serverTemplateData = {{ template_data | tojson }};
+        window.serverTemplateId = '{{ template_id }}';
+    </script>
+    {% endif %}
     <script src="/static/js/student.js"></script>
+    {% if template_data %}
+    <script>
+        // Автоматическая загрузка теста после загрузки student.js
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.serverTemplateData && window.serverTemplateId) {
+                // Скрываем форму выбора
+                const studentForm = document.getElementById('studentForm');
+                if (studentForm) {
+                    studentForm.style.display = 'none';
+                }
+                
+                // Устанавливаем данные теста
+                if (typeof currentTemplate !== 'undefined') {
+                    currentTemplate = window.serverTemplateData;
+                    
+                    // Показываем область теста
+                    const testArea = document.getElementById('testArea');
+                    if (testArea) {
+                        testArea.style.display = 'block';
+                    }
+                    
+                    // Загружаем документ
+                    if (typeof loadTestDocument === 'function') {
+                        loadTestDocument();
+                    }
+                } else {
+                    console.error('currentTemplate не определен в student.js');
+                }
+            }
+        });
+    </script>
+    {% endif %}
 </body>
 </html>
