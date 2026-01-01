@@ -241,8 +241,13 @@
                         </div>
                     </div>
                     
-                    <div id="usernamePreview" class="username-preview" style="display: none;">
-                        Логин: <strong id="previewUsername"></strong>
+                    <div class="form-group">
+                        <label>Логин *</label>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="text" id="username" required pattern="[a-z0-9._-]{3,50}" title="Только латинские буквы, цифры, точки, дефисы и подчеркивания (3-50 символов)" style="flex: 1;">
+                            <button type="button" class="btn-generate" onclick="generateUsername()" style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; white-space: nowrap;">🎲 Автогенерация</button>
+                        </div>
+                        <small style="color: #666; display: block; margin-top: 5px;">Формат: lastname.firstname (например: ivanov.petr)</small>
                     </div>
                     
                     <div class="form-group">

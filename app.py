@@ -15,7 +15,7 @@ from dataclasses import asdict
 from flask import send_from_directory
 from models import SessionLocal, User, Template, AuditLog, Subject, SubjectClass
 from validators import ValidationError, validate_teacher_data, validate_topic, validate_topic_slug, validate_subject_classes
-from utils import generate_username, generate_topic_slug, generate_random_password
+from utils import generate_username, generate_username_from_name, generate_topic_slug, generate_random_password
 
 AI_AVAILABLE = False
 checker = None
@@ -574,11 +574,28 @@ def create_teacher():
         # Валидация данных
         validate_teacher_data(data)
         
-        # Генерация логина
-        username = generate_username(data['city_code'], data['school_code'])
-        
-        # Проверка уникальности логина и email
         db = SessionLocal()
+        
+        # Генерация или использование логина
+        if 'username' in data and data['username'] and data['username'].strip():
+            # Использовать предоставленный логин
+            username = sanitize_username(data['username'].strip())
+            if not username:
+                db.close()
+                return jsonify({
+                    'success': False,
+                    'error': 'Логин не может быть пустым'
+                }), 400
+        else:
+            # Автогенерация логина из имени
+            existing_usernames = [u[0] for u in db.query(User.username).all()]
+            username = generate_username_from_name(
+                data['last_name'],
+                data['first_name'],
+                existing_usernames
+            )
+        
+        # Проверка уникальности логина
         existing_user = db.query(User).filter(User.username == username).first()
         if existing_user:
             db.close()
