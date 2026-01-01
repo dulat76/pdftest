@@ -59,6 +59,13 @@ app.config.from_object(Config)
 app.secret_key = app.config['SECRET_KEY']
 
 Config.create_directories()
+# Убеждаемся, что директории имеют правильные права доступа
+for folder in [Config.UPLOAD_FOLDER, Config.TEMPLATES_FOLDER, Config.STATIC_FOLDER]:
+    if os.path.exists(folder):
+        try:
+            os.chmod(folder, 0o755)
+        except Exception as e:
+            print(f"Не удалось установить права доступа для {folder}: {e}")
 # Дополнительно создаем папку для логов, если ее нет
 # Загружаем настройки AI при старте, чтобы ключ был доступен
 from ai_config import AIConfig
