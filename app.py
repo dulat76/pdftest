@@ -1312,7 +1312,7 @@ def update_subject(subject_id):
 @app.route('/api/admin/subjects/<int:subject_id>', methods=['DELETE'])
 @superuser_required
 def delete_subject(subject_id):
-    """Удаление предмета (мягкое удаление)"""
+    """Удаление предмета (физическое удаление из БД)"""
     try:
         db = SessionLocal()
         
@@ -1322,14 +1322,17 @@ def delete_subject(subject_id):
             db.close()
             return jsonify({'success': False, 'error': 'Предмет не найден'}), 404
         
-        # Сохраняем данные для логирования до закрытия сессии
+        # Сохраняем данные для логирования до удаления
         subject_name = subject.name
         subject_slug = subject.name_slug
+        subject_data = {
+            'name': subject_name,
+            'name_slug': subject_slug,
+            'description': subject.description
+        }
         
-        # Мягкое удаление
-        subject.is_active = False
-        subject.updated_at = datetime.utcnow()
-        
+        # Физическое удаление
+        db.delete(subject)
         db.commit()
         db.close()
         
@@ -1338,12 +1341,14 @@ def delete_subject(subject_id):
             action='delete_subject',
             target_type='subject',
             target_id=subject_id,
-            details={'name': subject_name, 'name_slug': subject_slug}
+            details=subject_data
         )
         
-        return jsonify({'success': True, 'message': 'Предмет деактивирован'})
+        return jsonify({'success': True, 'message': 'Предмет удален'})
     
     except Exception as e:
+        db.rollback()
+        db.close()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
