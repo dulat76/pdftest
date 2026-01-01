@@ -1983,9 +1983,13 @@ def save_template():
                 db.close()
                 raise
         
-        # Сохраняем данные для логирования до закрытия сессии
+        # Сохраняем данные для логирования и ответа до закрытия сессии
         template_id_for_log = template.id if template.id else None
         is_update = template.id is not None
+        subject_name = subject.name
+        subject_name_slug = subject.name_slug
+        user_city_code = user.city_code if user else None
+        user_school_code = user.school_code if user else None
         
         db.close()
         
@@ -2008,7 +2012,11 @@ def save_template():
         # Заменяем http://localhost:5000 на https://docquiz.predmet.kz если нужно
         if 'localhost' in base_url or '127.0.0.1' in base_url:
             base_url = 'https://docquiz.predmet.kz'
-        test_url = f"{base_url}/test/{user.city_code}/{user.school_code}/{subject.name_slug}/{topic_slug}"
+        
+        if user_city_code and user_school_code and subject_name_slug:
+            test_url = f"{base_url}/test/{user_city_code}/{user_school_code}/{subject_name_slug}/{topic_slug}"
+        else:
+            test_url = f"{base_url}/test/{data['template_id']}"
         
         return jsonify({
             'success': True,
@@ -2017,7 +2025,7 @@ def save_template():
             'topic_slug': topic_slug,
             'class_number': class_number,
             'subject_id': subject_id,
-            'subject_name': subject.name,
+            'subject_name': subject_name,
             'test_url': test_url,
             'message': 'Шаблон успешно сохранен'
         })
