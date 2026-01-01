@@ -475,10 +475,12 @@
         });
         
         async function resetPassword(id) {
+            // Преобразуем id в число
+            const teacherId = typeof id === 'string' ? parseInt(id) : id;
             if (!confirm('Сгенерировать новый пароль для этого учителя?')) return;
             
             try {
-                const response = await fetch(`/api/admin/teachers/${id}/reset-password`, {
+                const response = await fetch(`/api/admin/teachers/${teacherId}/reset-password`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({generate: true})
