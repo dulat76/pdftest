@@ -1489,6 +1489,17 @@ def test_by_link(city_code, school_code, subject_slug, topic_slug):
         template_images = template.images or []
         template_is_public = template.is_public
         
+        # Пытаемся загрузить sheet_url из JSON файла, если он есть
+        template_sheet_url = None
+        template_path_check = os.path.join(Config.TEMPLATES_FOLDER, f"{template_id}.json")
+        if os.path.exists(template_path_check):
+            try:
+                with open(template_path_check, 'r', encoding='utf-8') as f:
+                    file_template_data = json.load(f)
+                    template_sheet_url = file_template_data.get('sheet_url')
+            except Exception:
+                pass  # Игнорируем ошибки чтения файла
+        
         # Проверка публичности теста
         if not template_is_public:
             db.close()
@@ -1520,8 +1531,13 @@ def test_by_link(city_code, school_code, subject_slug, topic_slug):
                 'name': template_name,
                 'topic': template_topic,
                 'fields': template_fields if isinstance(template_fields, list) else (json.loads(template_fields) if isinstance(template_fields, str) else []),
-                'files': files_list  # Используем 'files' для совместимости с фронтендом
+                'files': files_list,  # Используем 'files' для совместимости с фронтендом
+                'sheet_url': template_sheet_url  # Добавляем sheet_url из файла, если он был загружен
             }
+        
+        # Если sheet_url не был загружен из файла, но был сохранен ранее, используем его
+        if not template_data.get('sheet_url') and template_sheet_url:
+            template_data['sheet_url'] = template_sheet_url
         
         # Передача данных в шаблон
         return render_template('student.html', 
@@ -2421,7 +2437,9 @@ def check_answers():
 
         # Запись в Google Sheets
         sheets_result = None
+        print(f"[CHECK_ANSWERS] sheet_url получен: {sheet_url}")
         if sheet_url:
+            print(f"[CHECK_ANSWERS] Начинаем сохранение в Google Sheets...")
             try:
                 creds_path = os.path.join(Config.CREDENTIALS_FOLDER, 'credentials.json')
                 if not os.path.exists(creds_path):
@@ -2490,9 +2508,13 @@ def check_answers():
                 }
 
             except Exception as e:
+                error_msg = str(e)
+                print(f"[CHECK_ANSWERS] Ошибка сохранения в Google Sheets: {error_msg}")
+                import traceback
+                traceback.print_exc()
                 sheets_result = {
                     "success": False, 
-                    "error": f"Ошибка Google Sheets: {str(e)}"
+                    "error": f"Ошибка Google Sheets: {error_msg}"
                 }
 
         # КРИТИЧНО: Формируем JSON ответ с ensure_ascii=False для правильной кодировки
