@@ -739,16 +739,23 @@ def get_teacher(teacher_id):
 def update_teacher(teacher_id):
     """Обновление данных учителя"""
     try:
+        print(f"[UPDATE_TEACHER] Начало обновления учителя ID={teacher_id}")
         data = request.get_json()
+        print(f"[UPDATE_TEACHER] Получены данные: {data}")
+        
         if not data:
+            print(f"[UPDATE_TEACHER] Ошибка: данные не получены")
             return jsonify({'success': False, 'error': 'Данные не получены'}), 400
         
         # Базовая валидация обязательных полей
         if 'first_name' in data and not data['first_name']:
+            print(f"[UPDATE_TEACHER] Ошибка: имя пустое")
             return jsonify({'success': False, 'error': 'Имя не может быть пустым'}), 400
         if 'last_name' in data and not data['last_name']:
+            print(f"[UPDATE_TEACHER] Ошибка: фамилия пустая")
             return jsonify({'success': False, 'error': 'Фамилия не может быть пустой'}), 400
         if 'email' in data and not data['email']:
+            print(f"[UPDATE_TEACHER] Ошибка: email пустой")
             return jsonify({'success': False, 'error': 'Email не может быть пустым'}), 400
         
         db = SessionLocal()
@@ -759,8 +766,11 @@ def update_teacher(teacher_id):
         ).first()
         
         if not teacher:
+            print(f"[UPDATE_TEACHER] Ошибка: учитель с ID={teacher_id} не найден")
             db.close()
             return jsonify({'success': False, 'error': 'Учитель не найден'}), 404
+        
+        print(f"[UPDATE_TEACHER] Учитель найден: {teacher.username}")
         
         # Обновление логина
         if 'username' in data and data['username']:
