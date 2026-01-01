@@ -410,11 +410,16 @@
         }
         
         function filterCities(value) {
-            // Функция для фильтрации городов (можно расширить при необходимости)
+            // При изменении города обновляем список школ
+            if (value && value.trim()) {
+                loadSchools(value.trim());
+            } else {
+                loadSchools();
+            }
         }
         
         function filterSchools(value) {
-            // Функция для фильтрации школ (можно расширить при необходимости)
+            // Функция для фильтрации школ (datalist делает это автоматически)
         }
         
         function openCreateModal() {
