@@ -1322,6 +1322,10 @@ def delete_subject(subject_id):
             db.close()
             return jsonify({'success': False, 'error': 'Предмет не найден'}), 404
         
+        # Сохраняем данные для логирования до закрытия сессии
+        subject_name = subject.name
+        subject_slug = subject.name_slug
+        
         # Мягкое удаление
         subject.is_active = False
         subject.updated_at = datetime.utcnow()
@@ -1329,12 +1333,12 @@ def delete_subject(subject_id):
         db.commit()
         db.close()
         
-        # Логирование
+        # Логирование (после закрытия сессии)
         log_audit_action(
             action='delete_subject',
             target_type='subject',
             target_id=subject_id,
-            details={'name': subject.name}
+            details={'name': subject_name, 'name_slug': subject_slug}
         )
         
         return jsonify({'success': True, 'message': 'Предмет деактивирован'})

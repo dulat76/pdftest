@@ -378,11 +378,17 @@
         });
         
         async function deleteSubject(id) {
-            const subject = subjects.find(s => s.id === id);
+            // Преобразуем id в число для сравнения
+            const subjectId = typeof id === 'string' ? parseInt(id) : id;
+            const subject = subjects.find(s => (s.id === subjectId) || (s.id === id));
+            if (!subject) {
+                alert('Ошибка: Предмет не найден');
+                return;
+            }
             if (!confirm(`Деактивировать предмет "${subject.name}"?`)) return;
             
             try {
-                const response = await fetch(`/api/admin/subjects/${id}`, {
+                const response = await fetch(`/api/admin/subjects/${subjectId}`, {
                     method: 'DELETE'
                 });
                 
