@@ -120,19 +120,6 @@ class Subject(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-class Subject(Base):
-    """Subject model for school subjects."""
-    __tablename__ = 'subjects'
-    
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(200), nullable=False, unique=True)  # Название предмета
-    name_slug = Column(String(200), nullable=False, unique=True, index=True)  # URL-friendly версия
-    description = Column(Text, nullable=True)
-    is_active = Column(Boolean, default=True, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-
 class StudentResult(Base):
     """Student test results."""
     __tablename__ = 'student_results'
