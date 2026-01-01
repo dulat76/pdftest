@@ -827,18 +827,22 @@ def update_teacher(teacher_id):
         
         teacher.updated_at = datetime.utcnow()
         
-        db.commit()
-        db.close()
-        
-        # Логирование
-        log_audit_action(
-            action='update_teacher',
-            target_type='teacher',
-            target_id=teacher_id,
-            details=data
-        )
-        
-        return jsonify({'success': True, 'message': 'Данные учителя обновлены'})
+        try:
+            db.commit()
+            # Логирование
+            log_audit_action(
+                action='update_teacher',
+                target_type='teacher',
+                target_id=teacher_id,
+                details=data
+            )
+            db.close()
+            return jsonify({'success': True, 'message': 'Данные учителя обновлены'})
+        except Exception as commit_error:
+            db.rollback()
+            db.close()
+            print(f"Ошибка при коммите изменений учителя {teacher_id}: {commit_error}")
+            return jsonify({'success': False, 'error': f'Ошибка при сохранении: {str(commit_error)}'}), 500
     
     except ValidationError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
