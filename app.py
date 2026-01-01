@@ -740,6 +740,17 @@ def update_teacher(teacher_id):
     """Обновление данных учителя"""
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'Данные не получены'}), 400
+        
+        # Базовая валидация обязательных полей
+        if 'first_name' in data and not data['first_name']:
+            return jsonify({'success': False, 'error': 'Имя не может быть пустым'}), 400
+        if 'last_name' in data and not data['last_name']:
+            return jsonify({'success': False, 'error': 'Фамилия не может быть пустой'}), 400
+        if 'email' in data and not data['email']:
+            return jsonify({'success': False, 'error': 'Email не может быть пустым'}), 400
+        
         db = SessionLocal()
         
         teacher = db.query(User).filter(
