@@ -1160,9 +1160,10 @@ def create_subject():
         
         db = SessionLocal()
         
-        # Проверка уникальности
+        # Проверка уникальности (проверяем только среди активных предметов)
         existing = db.query(Subject).filter(
-            (Subject.name == name) | (Subject.name_slug == name_slug)
+            ((Subject.name == name) | (Subject.name_slug == name_slug)),
+            Subject.is_active == True
         ).first()
         
         if existing:
