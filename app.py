@@ -1950,10 +1950,15 @@ def save_template():
         filename = f"{data['template_id']}.json"
         filepath = os.path.join(templates_folder, filename)
         
+        # Убеждаемся, что sheet_url сохраняется в данных
+        if 'sheet_url' not in data:
+            print(f"[SAVE_TEMPLATE] Предупреждение: sheet_url не найден в данных шаблона")
+        
         # Сохранение в файл
         try:
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
+            print(f"[SAVE_TEMPLATE] Шаблон сохранен в файл: {filepath}, sheet_url: {data.get('sheet_url', 'не указан')}")
             # Устанавливаем права на файл после создания
             os.chmod(filepath, 0o644)
         except PermissionError as perm_err:
