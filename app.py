@@ -1414,9 +1414,14 @@ def test_by_link(city_code, school_code, subject_slug, topic_slug):
     try:
         db = SessionLocal()
         
-        # Поиск учителя по city_code и school_code
-        username = generate_username(city_code, school_code)
-        user = db.query(User).filter(User.username == username).first()
+        # Поиск учителя по city_code и school_code напрямую
+        # Теперь логины генерируются из ФИО, поэтому ищем по city_code и school_code
+        user = db.query(User).filter(
+            User.city_code == city_code,
+            User.school_code == school_code,
+            User.role == 'teacher',
+            User.is_active == True
+        ).first()
         
         if not user:
             db.close()
@@ -1425,6 +1430,8 @@ def test_by_link(city_code, school_code, subject_slug, topic_slug):
                 error_message='Тест не найден',
                 error_description='Учитель не найден. Проверьте правильность ссылки.'
             ), 404
+        
+        username = user.username  # Используем реальный username для поиска теста
         
         # Поиск предмета по slug
         subject = db.query(Subject).filter(
