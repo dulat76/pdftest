@@ -452,10 +452,26 @@ def log_audit_action(action, target_type=None, target_id=None, details=None):
 
 
 # ==========================
+# HTML СТРАНИЦЫ ДЛЯ АДМИНИСТРИРОВАНИЯ
+# ==========================
+
+@app.route('/admin/teachers')
+@superuser_required
+def admin_teachers_page():
+    """Страница управления учителями"""
+    return render_template('admin_teachers.html', login=session.get('login'))
+
+@app.route('/admin/subjects')
+@superuser_required
+def admin_subjects_page():
+    """Страница управления предметами"""
+    return render_template('admin_subjects.html', login=session.get('login'))
+
+# ==========================
 # API ДЛЯ УПРАВЛЕНИЯ УЧИТЕЛЯМИ
 # ==========================
 
-@app.route('/admin/teachers', methods=['GET'])
+@app.route('/api/admin/teachers', methods=['GET'])
 @superuser_required
 def list_teachers():
     """Список всех учителей (только для супер-пользователя)"""
@@ -545,7 +561,7 @@ def get_teacher_info():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/admin/teachers', methods=['POST'])
+@app.route('/api/admin/teachers', methods=['POST'])
 @superuser_required
 def create_teacher():
     """Создание нового учителя"""
@@ -642,7 +658,7 @@ def create_teacher():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/admin/teachers/<int:teacher_id>', methods=['GET'])
+@app.route('/api/admin/teachers/<int:teacher_id>', methods=['GET'])
 @superuser_required
 def get_teacher(teacher_id):
     """Получение данных учителя"""
@@ -683,7 +699,7 @@ def get_teacher(teacher_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/admin/teachers/<int:teacher_id>', methods=['PUT'])
+@app.route('/api/admin/teachers/<int:teacher_id>', methods=['PUT'])
 @superuser_required
 def update_teacher(teacher_id):
     """Обновление данных учителя"""
@@ -738,7 +754,7 @@ def update_teacher(teacher_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/admin/teachers/<int:teacher_id>', methods=['DELETE'])
+@app.route('/api/admin/teachers/<int:teacher_id>', methods=['DELETE'])
 @superuser_required
 def delete_teacher(teacher_id):
     """Удаление учителя (мягкое удаление через is_active=False)"""
@@ -775,7 +791,7 @@ def delete_teacher(teacher_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/admin/teachers/<int:teacher_id>/reset-password', methods=['POST'])
+@app.route('/api/admin/teachers/<int:teacher_id>/reset-password', methods=['POST'])
 @superuser_required
 def reset_teacher_password(teacher_id):
     """Сброс пароля учителя"""
@@ -818,7 +834,7 @@ def reset_teacher_password(teacher_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/admin/teachers/generate-password', methods=['POST'])
+@app.route('/api/admin/teachers/generate-password', methods=['POST'])
 @superuser_required
 def generate_password():
     """Генерация случайного пароля"""
@@ -871,7 +887,7 @@ def get_audit_logs():
 # API ДЛЯ УПРАВЛЕНИЯ ПРЕДМЕТАМИ
 # ==========================
 
-@app.route('/admin/subjects', methods=['GET'])
+@app.route('/api/admin/subjects', methods=['GET'])
 @superuser_required
 def list_subjects():
     """Список всех предметов (только для супер-пользователя)"""
@@ -923,7 +939,7 @@ def get_subjects():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/admin/subjects', methods=['POST'])
+@app.route('/api/admin/subjects', methods=['POST'])
 @superuser_required
 def create_subject():
     """Создание нового предмета"""
@@ -988,7 +1004,7 @@ def create_subject():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/admin/subjects/<int:subject_id>', methods=['PUT'])
+@app.route('/api/admin/subjects/<int:subject_id>', methods=['PUT'])
 @superuser_required
 def update_subject(subject_id):
     """Обновление предмета"""
@@ -1048,7 +1064,7 @@ def update_subject(subject_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/admin/subjects/<int:subject_id>', methods=['DELETE'])
+@app.route('/api/admin/subjects/<int:subject_id>', methods=['DELETE'])
 @superuser_required
 def delete_subject(subject_id):
     """Удаление предмета (мягкое удаление)"""
@@ -1096,18 +1112,6 @@ def home():
 @login_required
 def editor_page():
     return render_template('editor.html', login=session.get('login'), role=session.get('role'))
-
-@app.route('/admin/teachers')
-@superuser_required
-def admin_teachers_page():
-    """Страница управления учителями"""
-    return render_template('admin_teachers.html', login=session.get('login'))
-
-@app.route('/admin/subjects')
-@superuser_required
-def admin_subjects_page():
-    """Страница управления предметами"""
-    return render_template('admin_subjects.html', login=session.get('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():

@@ -261,7 +261,7 @@
                 document.getElementById('loading').style.display = 'block';
                 document.getElementById('error').style.display = 'none';
                 
-                const response = await fetch('/admin/teachers');
+                const response = await fetch('/api/admin/teachers');
                 const data = await response.json();
                 
                 if (data.success) {
@@ -327,7 +327,7 @@
         }
         
         function generatePassword() {
-            fetch('/admin/teachers/generate-password', {
+            fetch('/api/admin/teachers/generate-password', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({length: 12})
@@ -398,13 +398,13 @@
             try {
                 let response;
                 if (id) {
-                    response = await fetch(`/admin/teachers/${id}`, {
+                    response = await fetch(`/api/admin/teachers/${id}`, {
                         method: 'PUT',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify(data)
                     });
                 } else {
-                    response = await fetch('/admin/teachers', {
+                    response = await fetch('/api/admin/teachers', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify(data)
@@ -433,7 +433,7 @@
             if (!confirm('Сгенерировать новый пароль для этого учителя?')) return;
             
             try {
-                const response = await fetch(`/admin/teachers/${id}/reset-password`, {
+                const response = await fetch(`/api/admin/teachers/${id}/reset-password`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({generate: true})
@@ -456,7 +456,7 @@
             if (!confirm(`Деактивировать учителя "${teacher.username}"?`)) return;
             
             try {
-                const response = await fetch(`/admin/teachers/${id}`, {
+                const response = await fetch(`/api/admin/teachers/${id}`, {
                     method: 'DELETE'
                 });
                 

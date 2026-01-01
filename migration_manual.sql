@@ -102,3 +102,4 @@ ON templates(created_by_username, subject_id, topic_slug);
 -- ALTER TABLE templates DROP COLUMN IF EXISTS class_number;
 -- DROP TABLE IF EXISTS subjects;
 
+

@@ -57,3 +57,4 @@ def downgrade():
     op.drop_index(op.f('ix_subjects_name_slug'), table_name='subjects')
     op.drop_table('subjects')
 
+

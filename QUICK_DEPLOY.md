@@ -80,3 +80,4 @@ sudo supervisorctl start pdftest
 
 **Подробная инструкция:** см. `DEPLOYMENT_GUIDE.md`
 
+

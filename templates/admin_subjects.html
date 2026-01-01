@@ -191,7 +191,7 @@
                 document.getElementById('loading').style.display = 'block';
                 document.getElementById('error').style.display = 'none';
                 
-                const response = await fetch('/admin/subjects');
+                const response = await fetch('/api/admin/subjects');
                 const data = await response.json();
                 
                 if (data.success) {
@@ -274,13 +274,13 @@
             try {
                 let response;
                 if (id) {
-                    response = await fetch(`/admin/subjects/${id}`, {
+                    response = await fetch(`/api/admin/subjects/${id}`, {
                         method: 'PUT',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify(data)
                     });
                 } else {
-                    response = await fetch('/admin/subjects', {
+                    response = await fetch('/api/admin/subjects', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify(data)
@@ -306,7 +306,7 @@
             if (!confirm(`Деактивировать предмет "${subject.name}"?`)) return;
             
             try {
-                const response = await fetch(`/admin/subjects/${id}`, {
+                const response = await fetch(`/api/admin/subjects/${id}`, {
                     method: 'DELETE'
                 });
                 
@@ -334,4 +334,5 @@
     </script>
 </body>
 </html>
+
 
