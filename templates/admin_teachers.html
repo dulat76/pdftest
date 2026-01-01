@@ -341,6 +341,14 @@
             errorDiv.style.display = 'block';
         }
         
+        function autoGenerateUsernameIfEmpty() {
+            // Автоматически генерировать логин, если поле логина пустое
+            const usernameField = document.getElementById('username');
+            if (!usernameField.value.trim()) {
+                generateUsername();
+            }
+        }
+        
         function generatePassword() {
             fetch('/api/admin/teachers/generate-password', {
                 method: 'POST',
