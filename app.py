@@ -826,6 +826,9 @@ def delete_teacher(teacher_id):
             db.close()
             return jsonify({'success': False, 'error': 'Учитель не найден'}), 404
         
+        # Сохраняем данные для логирования до закрытия сессии
+        username = teacher.username
+        
         # Мягкое удаление
         teacher.is_active = False
         teacher.updated_at = datetime.utcnow()
@@ -833,12 +836,12 @@ def delete_teacher(teacher_id):
         db.commit()
         db.close()
         
-        # Логирование
+        # Логирование (после закрытия сессии)
         log_audit_action(
             action='delete_teacher',
             target_type='teacher',
             target_id=teacher_id,
-            details={'username': teacher.username}
+            details={'username': username}
         )
         
         return jsonify({'success': True, 'message': 'Учитель деактивирован'})

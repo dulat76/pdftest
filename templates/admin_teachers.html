@@ -377,8 +377,14 @@
         }
         
         function editTeacher(id) {
-            const teacher = teachers.find(t => t.id === id);
-            if (!teacher) return;
+            // Преобразуем id в число для сравнения
+            const teacherId = typeof id === 'string' ? parseInt(id) : id;
+            const teacher = teachers.find(t => t.id === teacherId || t.id === id);
+            if (!teacher) {
+                console.error('Учитель не найден:', id, 'Доступные учителя:', teachers.map(t => ({id: t.id, username: t.username})));
+                alert('Ошибка: Учитель не найден в списке');
+                return;
+            }
             
             document.getElementById('modalTitle').textContent = 'Редактировать учителя';
             document.getElementById('teacherId').value = teacher.id;
@@ -489,11 +495,17 @@
         }
         
         async function deleteTeacher(id) {
-            const teacher = teachers.find(t => t.id === id);
+            // Преобразуем id в число для сравнения
+            const teacherId = typeof id === 'string' ? parseInt(id) : id;
+            const teacher = teachers.find(t => (t.id === teacherId) || (t.id === id));
+            if (!teacher) {
+                alert('Ошибка: Учитель не найден');
+                return;
+            }
             if (!confirm(`Деактивировать учителя "${teacher.username}"?`)) return;
             
             try {
-                const response = await fetch(`/api/admin/teachers/${id}`, {
+                const response = await fetch(`/api/admin/teachers/${teacherId}`, {
                     method: 'DELETE'
                 });
                 
