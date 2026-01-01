@@ -1412,6 +1412,7 @@ def test_by_link(city_code, school_code, subject_slug, topic_slug):
     Новый формат: /test/<city_code>/<school_code>/<subject_slug>/<topic_slug>
     """
     try:
+        print(f"[TEST_BY_LINK] Поиск теста: city_code={city_code}, school_code={school_code}, subject_slug={subject_slug}, topic_slug={topic_slug}")
         db = SessionLocal()
         
         # Поиск учителя по city_code и school_code напрямую
@@ -1424,6 +1425,7 @@ def test_by_link(city_code, school_code, subject_slug, topic_slug):
         ).first()
         
         if not user:
+            print(f"[TEST_BY_LINK] Учитель не найден: city_code={city_code}, school_code={school_code}")
             db.close()
             return render_template('error.html', 
                 error_code=404,
@@ -1432,6 +1434,7 @@ def test_by_link(city_code, school_code, subject_slug, topic_slug):
             ), 404
         
         username = user.username  # Используем реальный username для поиска теста
+        print(f"[TEST_BY_LINK] Учитель найден: username={username}")
         
         # Поиск предмета по slug
         subject = db.query(Subject).filter(
@@ -1440,12 +1443,15 @@ def test_by_link(city_code, school_code, subject_slug, topic_slug):
         ).first()
         
         if not subject:
+            print(f"[TEST_BY_LINK] Предмет не найден: subject_slug={subject_slug}")
             db.close()
             return render_template('error.html', 
                 error_code=404,
                 error_message='Тест не найден',
                 error_description='Предмет не найден. Проверьте правильность ссылки.'
             ), 404
+        
+        print(f"[TEST_BY_LINK] Предмет найден: subject_id={subject.id}, name={subject.name}")
         
         # Поиск теста по username, subject_id и topic_slug
         template = db.query(Template).filter(
@@ -1456,12 +1462,24 @@ def test_by_link(city_code, school_code, subject_slug, topic_slug):
         ).first()
         
         if not template:
+            # Проверим, какие тесты есть у этого учителя для отладки
+            all_templates = db.query(Template).filter(
+                Template.created_by_username == username,
+                Template.subject_id == subject.id,
+                Template.is_active == True
+            ).all()
+            print(f"[TEST_BY_LINK] Тест не найден. Доступные тесты для username={username}, subject_id={subject.id}:")
+            for t in all_templates:
+                print(f"  - template_id={t.template_id}, topic={t.topic}, topic_slug={t.topic_slug}")
+            
             db.close()
             return render_template('error.html', 
                 error_code=404,
                 error_message='Тест не найден',
-                error_description='Проверьте правильность ссылки или обратитесь к учителю.'
+                error_description=f'Тест с темой "{topic_slug}" не найден. Проверьте правильность ссылки или обратитесь к учителю.'
             ), 404
+        
+        print(f"[TEST_BY_LINK] Тест найден: template_id={template.template_id}, topic={template.topic}")
         
         # Проверка публичности теста
         if not template.is_public:
@@ -1478,24 +1496,24 @@ def test_by_link(city_code, school_code, subject_slug, topic_slug):
         db.close()
         
         # Загрузка данных шаблона из файла (для совместимости)
-        template_path = os.path.join(Config.TEMPLATES_FOLDER, f"{template.template_id}.json")
+        template_path = os.path.join(Config.TEMPLATES_FOLDER, f"{template_id}.json")
         if os.path.exists(template_path):
             with open(template_path, 'r', encoding='utf-8') as f:
                 template_data = json.load(f)
         else:
-            # Если файла нет, создаем данные из БД
+            # Если файла нет, создаем данные из БД (используем сохраненные значения)
             template_data = {
-                'template_id': template.template_id,
-                'name': template.name,
-                'topic': template.topic,
-                'fields': template.fields or [],
-                'files': template.images or []
+                'template_id': template_id,
+                'name': template_name,
+                'topic': template_topic,
+                'fields': template_fields,
+                'files': template_images
             }
         
         # Передача данных в шаблон
         return render_template('student.html', 
             template_data=template_data,
-            template_id=template.template_id,
+            template_id=template_id,
             test_url=request.url
         )
     
