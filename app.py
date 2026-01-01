@@ -15,7 +15,7 @@ from dataclasses import asdict
 from flask import send_from_directory
 from models import SessionLocal, User, Template, AuditLog, Subject, SubjectClass
 from validators import ValidationError, validate_teacher_data, validate_topic, validate_topic_slug, validate_subject_classes
-from utils import generate_username, generate_username_from_name, generate_topic_slug, generate_random_password
+from utils import generate_username, generate_username_from_name, generate_topic_slug, generate_random_password, sanitize_username
 
 AI_AVAILABLE = False
 checker = None
