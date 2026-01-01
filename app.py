@@ -1510,12 +1510,14 @@ def test_by_link(city_code, school_code, subject_slug, topic_slug):
                 template_data = json.load(f)
         else:
             # Если файла нет, создаем данные из БД (используем сохраненные значения)
+            # Преобразуем images в files для совместимости с фронтендом
+            files_list = template_images if isinstance(template_images, list) else (json.loads(template_images) if isinstance(template_images, str) else [])
             template_data = {
                 'template_id': template_id,
                 'name': template_name,
                 'topic': template_topic,
-                'fields': template_fields,
-                'files': template_images
+                'fields': template_fields if isinstance(template_fields, list) else (json.loads(template_fields) if isinstance(template_fields, str) else []),
+                'files': files_list  # Используем 'files' для совместимости с фронтендом
             }
         
         # Передача данных в шаблон
