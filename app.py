@@ -1067,10 +1067,11 @@ def get_schools():
 @app.route('/api/admin/subjects', methods=['GET'])
 @superuser_required
 def list_subjects():
-    """Список всех предметов (только для супер-пользователя)"""
+    """Список всех предметов (только для супер-пользователя) - показывает все предметы, включая неактивные"""
     try:
         db = SessionLocal()
-        subjects = db.query(Subject).filter(Subject.is_active == True).order_by(Subject.name).all()
+        # В админ-панели показываем все предметы (и активные, и неактивные)
+        subjects = db.query(Subject).order_by(Subject.name).all()
         
         subjects_data = []
         for s in subjects:
