@@ -1871,13 +1871,35 @@ def save_template():
         data['class_number'] = class_number
         data['subject_id'] = subject_id
         
+        # Убеждаемся, что директория существует и имеет правильные права
+        templates_folder = Config.TEMPLATES_FOLDER
+        if not os.path.exists(templates_folder):
+            os.makedirs(templates_folder, mode=0o755, exist_ok=True)
+        elif not os.access(templates_folder, os.W_OK):
+            # Если директория существует, но нет прав на запись, пытаемся изменить права
+            try:
+                os.chmod(templates_folder, 0o755)
+            except Exception as perm_error:
+                print(f"Не удалось изменить права доступа к {templates_folder}: {perm_error}")
+                return jsonify({
+                    'error': f'Нет прав на запись в директорию templates_json. Обратитесь к администратору.'
+                }), 500
+        
         # Формирование имени файла
         filename = f"{data['template_id']}.json"
-        filepath = os.path.join(Config.TEMPLATES_FOLDER, filename)
+        filepath = os.path.join(templates_folder, filename)
         
         # Сохранение в файл
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            # Устанавливаем права на файл после создания
+            os.chmod(filepath, 0o644)
+        except PermissionError as perm_err:
+            print(f"Ошибка прав доступа при сохранении файла {filepath}: {perm_err}")
+            return jsonify({
+                'error': f'Нет прав на запись файла. Обратитесь к администратору. Путь: {templates_folder}'
+            }), 500
         
         # Сохранение/обновление в БД
         template = db.query(Template).filter(
