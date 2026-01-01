@@ -40,6 +40,7 @@ idna==3.10
 python-dateutil==2.9.0.post0
 six==1.17.0
 rapidfuzz==3.10.1
+psutil==6.1.0
 
 # Production server
 gunicorn==21.2.0
@@ -52,4 +53,3 @@ gunicorn==21.2.0
 # torch
 # transformers
 # groq
-# psutil
