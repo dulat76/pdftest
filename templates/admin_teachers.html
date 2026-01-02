@@ -325,7 +325,8 @@
                     <td>
                         <button class="btn-action btn-edit" onclick="editTeacher(${teacher.id})">✏️</button>
                         <button class="btn-action btn-reset" onclick="resetPassword(${teacher.id})">🔑</button>
-                        <button class="btn-action btn-delete" onclick="deleteTeacher(${teacher.id})">🗑️</button>
+                        <button class="btn-action btn-deactivate" onclick="deactivateTeacher(${teacher.id})" style="background: #f39c12; color: white;" title="Деактивировать">⏸️</button>
+                        <button class="btn-action btn-delete" onclick="deleteTeacher(${teacher.id})" title="Удалить навсегда">🗑️</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -508,9 +509,34 @@
             }
         }
         
+        async function deactivateTeacher(id) {
+            const teacher = teachers.find(t => t.id === id);
+            if (!confirm(`Деактивировать учителя "${teacher.username}"?\n\nУчитель не сможет войти в систему, но данные сохранятся.`)) return;
+            
+            try {
+                const response = await fetch(`/api/admin/teachers/${id}/deactivate`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('Учитель деактивирован');
+                    loadTeachers();
+                } else {
+                    alert('Ошибка: ' + result.error);
+                }
+            } catch (error) {
+                alert('Ошибка: ' + error.message);
+            }
+        }
+        
         async function deleteTeacher(id) {
             const teacher = teachers.find(t => t.id === id);
-            if (!confirm(`Деактивировать учителя "${teacher.username}"?`)) return;
+            if (!confirm(`⚠️ ВНИМАНИЕ!\n\nУдалить учителя "${teacher.username}" навсегда?\n\nЭто действие нельзя отменить. Все данные учителя будут удалены.`)) return;
+            
+            if (!confirm(`Вы уверены? Это действие необратимо!`)) return;
             
             try {
                 const response = await fetch(`/api/admin/teachers/${id}`, {
@@ -520,7 +546,7 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    alert('Учитель деактивирован');
+                    alert('Учитель удален');
                     loadTeachers();
                 } else {
                     alert('Ошибка: ' + result.error);

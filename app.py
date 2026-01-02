@@ -720,8 +720,23 @@ def update_teacher(teacher_id):
         ).first()
         
         if not teacher:
-            db.close()
             return jsonify({'success': False, 'error': 'Учитель не найден'}), 404
+        
+        # Обновление username если указан
+        if 'username' in data and data['username']:
+            new_username = sanitize_username(data['username'].strip())
+            if new_username != teacher.username:
+                # Проверка уникальности username
+                existing_user = db.query(User).filter(
+                    User.username == new_username,
+                    User.id != teacher_id
+                ).first()
+                if existing_user:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Пользователь с логином "{new_username}" уже существует'
+                    }), 400
+                teacher.username = new_username
         
         # Обновление полей
         if 'first_name' in data:
