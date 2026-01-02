@@ -25,30 +25,20 @@ class AuthManager:
         """
         db = None
         try:
-            print(f"[AUTH DEBUG] Попытка входа: username='{login}'")
             db = SessionLocal()
             
             # Поиск пользователя по логину
             user = db.query(User).filter(User.username == login).first()
             
             if not user:
-                print(f"[AUTH DEBUG] Пользователь '{login}' не найден")
                 return {"success": False, "error": "Неверный логин или пароль"}
-            
-            print(f"[AUTH DEBUG] Пользователь найден: ID={user.id}, active={user.is_active}")
             
             # Проверка активности аккаунта
             if not user.is_active:
-                print(f"[AUTH DEBUG] Аккаунт деактивирован")
                 return {"success": False, "error": "Учетная запись деактивирована"}
             
             # Проверка пароля
-            print(f"[AUTH DEBUG] Проверка пароля...")
-            password_check = check_password_hash(user.password_hash, password)
-            print(f"[AUTH DEBUG] Результат проверки пароля: {password_check}")
-            
-            if not password_check:
-                print(f"[AUTH DEBUG] Пароль неверный")
+            if not check_password_hash(user.password_hash, password):
                 return {"success": False, "error": "Неверный логин или пароль"}
             
             # Проверка срока действия
@@ -56,7 +46,6 @@ class AuthManager:
             if user.expiration_date:
                 today = date.today()
                 if today > user.expiration_date:
-                    print(f"[AUTH DEBUG] Срок действия истек: {user.expiration_date}")
                     return {
                         "success": False,
                         "error": f"Срок действия учетной записи истек ({user.expiration_date.strftime('%Y-%m-%d')})."
@@ -65,7 +54,6 @@ class AuthManager:
             else:
                 days_left = "Бессрочно"
             
-            print(f"[AUTH DEBUG] Аутентификация успешна для пользователя {user.username}")
             result = {
                 "success": True,
                 "login": user.username,
@@ -79,12 +67,11 @@ class AuthManager:
             import traceback
             error_msg = str(e)
             error_type = type(e).__name__
-            print(f"[AUTH DEBUG] ❌ ИСКЛЮЧЕНИЕ: {error_type}: {error_msg}")
-            print(f"[AUTH DEBUG] Traceback:")
+            print(f"Error authenticating user: {error_type}: {error_msg}")
             traceback.print_exc()
             return {
                 "success": False, 
-                "error": f"Ошибка при аутентификации: {error_type}: {error_msg}"
+                "error": "Ошибка при аутентификации"
             }
         finally:
             if db:
