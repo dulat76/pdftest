@@ -268,6 +268,13 @@
                         </div>
                     </div>
                     
+                    <div class="form-group" id="isActiveGroup" style="display: none;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="isActive" style="width: auto; cursor: pointer;">
+                            <span>Активен (может войти в систему)</span>
+                        </label>
+                    </div>
+                    
                     <div class="modal-actions">
                         <button type="button" onclick="closeModal()" style="padding: 10px 20px; background: #95a5a6; color: white; border: none; border-radius: 6px; cursor: pointer;">Отмена</button>
                         <button type="submit" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">Сохранить</button>
@@ -325,7 +332,6 @@
                     <td>
                         <button class="btn-action btn-edit" onclick="editTeacher(${teacher.id})">✏️</button>
                         <button class="btn-action btn-reset" onclick="resetPassword(${teacher.id})">🔑</button>
-                        <button class="btn-action btn-deactivate" onclick="deactivateTeacher(${teacher.id})" style="background: #f39c12; color: white;" title="Деактивировать">⏸️</button>
                         <button class="btn-action btn-delete" onclick="deleteTeacher(${teacher.id})" title="Удалить навсегда">🗑️</button>
                     </td>
                 `;
@@ -392,6 +398,7 @@
             document.getElementById('teacherForm').reset();
             document.getElementById('teacherId').value = '';
             document.getElementById('username').value = '';
+            document.getElementById('isActiveGroup').style.display = 'none';
             document.getElementById('teacherModal').style.display = 'block';
             loadCities();
             loadSchools();
@@ -419,6 +426,8 @@
             }
             document.getElementById('expirationDate').value = teacher.expiration_date || '';
             document.getElementById('maxTestsLimit').value = teacher.max_tests_limit || '';
+            document.getElementById('isActive').checked = teacher.is_active !== false;
+            document.getElementById('isActiveGroup').style.display = 'block';
             document.getElementById('password').value = '';
             document.getElementById('password').required = false;
             document.getElementById('teacherModal').style.display = 'block';
@@ -444,6 +453,11 @@
                 expiration_date: document.getElementById('expirationDate').value || null,
                 max_tests_limit: document.getElementById('maxTestsLimit').value ? parseInt(document.getElementById('maxTestsLimit').value) : null
             };
+            
+            // Добавляем is_active только при редактировании
+            if (id) {
+                data.is_active = document.getElementById('isActive').checked;
+            }
             
             const password = document.getElementById('password').value.trim();
             if (password) {
@@ -480,10 +494,12 @@
                     closeModal();
                     loadTeachers();
                 } else {
-                    alert('Ошибка: ' + result.error);
+                    alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
+                    console.error('Ошибка сохранения:', result);
                 }
             } catch (error) {
                 alert('Ошибка: ' + error.message);
+                console.error('Ошибка запроса:', error);
             }
         });
         
@@ -501,29 +517,6 @@
                 
                 if (result.success) {
                     alert(`Новый пароль: ${result.password}\n\nСохраните его!`);
-                } else {
-                    alert('Ошибка: ' + result.error);
-                }
-            } catch (error) {
-                alert('Ошибка: ' + error.message);
-            }
-        }
-        
-        async function deactivateTeacher(id) {
-            const teacher = teachers.find(t => t.id === id);
-            if (!confirm(`Деактивировать учителя "${teacher.username}"?\n\nУчитель не сможет войти в систему, но данные сохранятся.`)) return;
-            
-            try {
-                const response = await fetch(`/api/admin/teachers/${id}/deactivate`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'}
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    alert('Учитель деактивирован');
-                    loadTeachers();
                 } else {
                     alert('Ошибка: ' + result.error);
                 }
