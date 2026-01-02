@@ -13,6 +13,9 @@ except ImportError:
     def check_password_hash(pwhash, password):
         return False
 
+# Импортируем text для SQL запросов
+from sqlalchemy import text
+
 print("🔍 Диагностика проблемы аутентификации...\n")
 
 # 1. Проверка подключения к БД
@@ -23,7 +26,7 @@ try:
     print(f"   ✅ DATABASE_URL: {str(engine.url).replace('flask_password123', '***')}")
     
     db = SessionLocal()
-    db.execute("SELECT 1")
+    db.execute(text("SELECT 1"))
     print("   ✅ Подключение к БД успешно")
     db.close()
 except Exception as e:
