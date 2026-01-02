@@ -228,7 +228,7 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Город *</label>
-                            <input type="text" id="city" list="citiesList" required oninput="updateUsernamePreview(); filterCities(this.value)">
+                            <input type="text" id="city" list="citiesList" required>
                             <datalist id="citiesList"></datalist>
                         </div>
                         <div class="form-group">
@@ -240,7 +240,7 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Школа *</label>
-                            <input type="text" id="school" list="schoolsList" required oninput="filterSchools(this.value)">
+                            <input type="text" id="school" list="schoolsList" required>
                             <datalist id="schoolsList"></datalist>
                         </div>
                         <div class="form-group">
@@ -393,6 +393,24 @@
             });
         }
         
+        function loadCities() {
+            // Функция для загрузки списка городов (можно реализовать позже)
+            // Пока оставляем пустой список
+        }
+        
+        function loadSchools(city) {
+            // Функция для загрузки списка школ (можно реализовать позже)
+            // Пока оставляем пустой список
+        }
+        
+        function filterCities(value) {
+            // Функция для фильтрации городов (можно реализовать позже)
+        }
+        
+        function filterSchools(value) {
+            // Функция для фильтрации школ (можно реализовать позже)
+        }
+        
         function openCreateModal() {
             document.getElementById('modalTitle').textContent = 'Добавить учителя';
             document.getElementById('teacherForm').reset();
@@ -400,8 +418,6 @@
             document.getElementById('username').value = '';
             document.getElementById('isActiveGroup').style.display = 'none';
             document.getElementById('teacherModal').style.display = 'block';
-            loadCities();
-            loadSchools();
         }
         
         function editTeacher(id) {
@@ -418,12 +434,6 @@
             document.getElementById('school').value = teacher.school || '';
             document.getElementById('schoolCode').value = teacher.school_code || '';
             document.getElementById('username').value = teacher.username || '';
-            loadCities();
-            if (teacher.city) {
-                loadSchools(teacher.city);
-            } else {
-                loadSchools();
-            }
             document.getElementById('expirationDate').value = teacher.expiration_date || '';
             document.getElementById('maxTestsLimit').value = teacher.max_tests_limit || '';
             document.getElementById('isActive').checked = teacher.is_active !== false;
