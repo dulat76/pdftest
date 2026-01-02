@@ -1721,10 +1721,16 @@ def save_template():
             db.close()
             return jsonify({'error': 'Пользователь не найден'}), 404
         
+        # Сохраняем данные пользователя в переменные до закрытия сессии
+        user_city_code = user.city_code
+        user_school_code = user.school_code
+        user_username = user.username
+        user_id = user.id
+        
         # Автоматически добавляем city_code и school_code из данных пользователя
-        data['city_code'] = user.city_code
-        data['school_code'] = user.school_code
-        data['created_by_username'] = user.username
+        data['city_code'] = user_city_code
+        data['school_code'] = user_school_code
+        data['created_by_username'] = user_username
         
         # Получаем topic и subject_id из данных (если переданы)
         topic = data.get('topic', '').strip()
@@ -1783,8 +1789,8 @@ def save_template():
                         description=data.get('description'),
                         fields=data.get('fields', []),
                         images=data.get('images'),
-                        created_by=user.id,
-                        created_by_username=user.username,
+                        created_by=user_id,
+                        created_by_username=user_username,
                         topic=topic,
                         topic_slug=topic_slug,
                         subject_id=subject_id,
@@ -1818,7 +1824,7 @@ def save_template():
         if 'localhost' in base_url or '127.0.0.1' in base_url:
             base_url = 'https://docquiz.predmet.kz'
         
-        test_url = f"{base_url}/student/{user.city_code}/{user.school_code}"
+        test_url = f"{base_url}/student/{user_city_code}/{user_school_code}"
         
         # Логирование (если есть user_id)
         if session.get('user_id'):
@@ -1841,8 +1847,8 @@ def save_template():
             'success': True,
             'template_id': data['template_id'],
             'test_url': test_url,
-            'city_code': user.city_code,
-            'school_code': user.school_code,
+            'city_code': user_city_code,
+            'school_code': user_school_code,
             'message': 'Шаблон успешно сохранен'
         })
 
