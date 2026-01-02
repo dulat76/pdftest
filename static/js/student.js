@@ -5,18 +5,45 @@ let currentPage = 0;
 let studentAnswers = {};
 let studentInfo = {};
 
+// Переменные для фильтрации
+let filterState = {
+    cityCode: null,
+    schoolCode: null,
+    selectedClass: null,
+    selectedSubjectId: null,
+    selectedTopic: null,
+    currentStep: 1  // 1=класс, 2=предмет, 3=тема, 4=тест
+};
+
 // ====================================================================
 //                             ИНИЦИАЛИЗАЦИЯ
 // ====================================================================
 
 document.addEventListener('DOMContentLoaded', function() {
-    loadClasses();
-    loadTemplateList();
     setupModal();
-
-    const templateSelect = document.getElementById('templateSelect');
-    if (templateSelect) {
-        templateSelect.addEventListener('change', loadClasses);
+    
+    // Проверяем, есть ли city_code и school_code в URL
+    const pathParts = window.location.pathname.split('/').filter(p => p);
+    if (pathParts.length >= 3 && pathParts[0] === 'student' && pathParts[1] && pathParts[2]) {
+        filterState.cityCode = pathParts[1];
+        filterState.schoolCode = pathParts[2];
+        initFilterFlow();
+    } else {
+        // Старый режим - показываем форму выбора теста (скрываем формы фильтрации)
+        ['stepClassForm', 'stepSubjectForm', 'stepTopicForm', 'stepTestForm'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+        const progressDiv = document.getElementById('filterProgress');
+        if (progressDiv) progressDiv.style.display = 'none';
+        
+        // Показываем старую форму (если она есть)
+        const oldForm = document.getElementById('studentForm');
+        if (oldForm) {
+            oldForm.style.display = 'block';
+            loadClasses();
+            loadTemplateList();
+        }
     }
 });
 
@@ -49,7 +76,298 @@ function showModal(message) {
 }
 
 // ====================================================================
-//                             ЗАГРУЗКА КЛАССОВ
+//                             ФИЛЬТРАЦИЯ ТЕСТОВ
+// ====================================================================
+
+async function initFilterFlow() {
+    // Показываем индикатор прогресса
+    const progressDiv = document.getElementById('filterProgress');
+    if (progressDiv) {
+        progressDiv.style.display = 'block';
+        updateStepIndicator(1);
+    }
+    
+    // Загружаем классы для школы
+    await loadClassesForSchool();
+}
+
+async function loadClassesForSchool() {
+    try {
+        const response = await fetch(`/api/classes/by-school/${filterState.cityCode}/${filterState.schoolCode}`);
+        const result = await response.json();
+        
+        if (result.success && result.classes.length > 0) {
+            displayClasses(result.classes);
+        } else {
+            showModal('Для вашей школы пока нет доступных тестов');
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки классов:', error);
+        showModal('Ошибка загрузки классов');
+    }
+}
+
+function displayClasses(classes) {
+    const container = document.getElementById('classesContainer');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    classes.forEach(classNum => {
+        const btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.style.cssText = 'padding: 15px; font-size: 1.1em; min-width: 80px;';
+        btn.textContent = `${classNum} класс`;
+        btn.onclick = () => selectClass(classNum);
+        container.appendChild(btn);
+    });
+    
+    // Показываем форму выбора класса
+    document.getElementById('stepClassForm').style.display = 'block';
+}
+
+function selectClass(classNum) {
+    filterState.selectedClass = classNum;
+    filterState.currentStep = 2;
+    
+    // Скрываем форму класса, показываем форму предмета
+    document.getElementById('stepClassForm').style.display = 'none';
+    document.getElementById('stepSubjectForm').style.display = 'block';
+    updateStepIndicator(2);
+    
+    // Загружаем предметы для выбранного класса
+    loadSubjectsForClass(classNum);
+}
+
+async function loadSubjectsForClass(classNum) {
+    try {
+        const response = await fetch(`/api/subjects?class_level=${classNum}`);
+        const result = await response.json();
+        
+        if (result.success && result.subjects.length > 0) {
+            displaySubjects(result.subjects);
+        } else {
+            showModal('Для выбранного класса пока нет доступных предметов');
+            goBack();
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки предметов:', error);
+        showModal('Ошибка загрузки предметов');
+    }
+}
+
+function displaySubjects(subjects) {
+    const container = document.getElementById('subjectsContainer');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    subjects.forEach(subject => {
+        const btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.style.cssText = 'padding: 15px; font-size: 1.1em; min-width: 120px;';
+        btn.textContent = subject.name;
+        btn.onclick = () => selectSubject(subject.id, subject.name);
+        container.appendChild(btn);
+    });
+}
+
+function selectSubject(subjectId, subjectName) {
+    filterState.selectedSubjectId = subjectId;
+    filterState.currentStep = 3;
+    
+    // Скрываем форму предмета, показываем форму темы
+    document.getElementById('stepSubjectForm').style.display = 'none';
+    document.getElementById('stepTopicForm').style.display = 'block';
+    updateStepIndicator(3);
+    
+    // Загружаем темы для выбранного предмета и класса
+    loadTopicsForSubject();
+}
+
+async function loadTopicsForSubject() {
+    try {
+        const params = new URLSearchParams({
+            city_code: filterState.cityCode,
+            school_code: filterState.schoolCode,
+            class_level: filterState.selectedClass,
+            subject_id: filterState.selectedSubjectId
+        });
+        
+        const response = await fetch(`/api/topics/by-school?${params}`);
+        const result = await response.json();
+        
+        if (result.success && result.topics.length > 0) {
+            displayTopics(result.topics);
+        } else {
+            showModal('Для выбранного предмета пока нет доступных тем');
+            goBack();
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки тем:', error);
+        showModal('Ошибка загрузки тем');
+    }
+}
+
+function displayTopics(topics) {
+    const container = document.getElementById('topicsContainer');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    topics.forEach(topic => {
+        const btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.style.cssText = 'padding: 15px; font-size: 1.1em; min-width: 150px;';
+        btn.textContent = topic;
+        btn.onclick = () => selectTopic(topic);
+        container.appendChild(btn);
+    });
+}
+
+function selectTopic(topic) {
+    filterState.selectedTopic = topic;
+    filterState.currentStep = 4;
+    
+    // Скрываем форму темы, показываем форму выбора теста
+    document.getElementById('stepTopicForm').style.display = 'none';
+    document.getElementById('stepTestForm').style.display = 'block';
+    updateStepIndicator(4);
+    
+    // Устанавливаем класс в поле ввода
+    const classInput = document.getElementById('studentClass');
+    if (classInput) {
+        classInput.value = `${filterState.selectedClass} класс`;
+    }
+    
+    // Загружаем тесты для выбранных параметров
+    loadTestsForSelection();
+}
+
+async function loadTestsForSelection() {
+    try {
+        const params = new URLSearchParams({
+            city_code: filterState.cityCode,
+            school_code: filterState.schoolCode,
+            class_level: filterState.selectedClass,
+            subject_id: filterState.selectedSubjectId,
+            topic: filterState.selectedTopic
+        });
+        
+        const response = await fetch(`/api/templates/filter?${params}`);
+        const result = await response.json();
+        
+        if (result.success && result.templates.length > 0) {
+            populateTestSelect(result.templates);
+        } else {
+            showModal('Для выбранных параметров пока нет доступных тестов');
+            goBack();
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки тестов:', error);
+        showModal('Ошибка загрузки тестов');
+    }
+}
+
+function populateTestSelect(templates) {
+    const select = document.getElementById('templateSelect');
+    if (!select) return;
+    
+    select.innerHTML = '<option value="">Выберите тест...</option>';
+    
+    templates.forEach(template => {
+        const option = document.createElement('option');
+        option.value = template.id;
+        option.textContent = template.name || template.id;
+        select.appendChild(option);
+    });
+}
+
+function updateStepIndicator(step) {
+    for (let i = 1; i <= 4; i++) {
+        const stepEl = document.getElementById(`step${i}`);
+        if (stepEl) {
+            if (i <= step) {
+                stepEl.classList.add('active');
+                stepEl.style.color = '#27ae60';
+                stepEl.style.fontWeight = 'bold';
+            } else {
+                stepEl.classList.remove('active');
+                stepEl.style.color = '#999';
+                stepEl.style.fontWeight = 'normal';
+            }
+        }
+    }
+}
+
+function goBack() {
+    if (filterState.currentStep > 1) {
+        filterState.currentStep--;
+        
+        // Скрываем все формы
+        ['stepClassForm', 'stepSubjectForm', 'stepTopicForm', 'stepTestForm'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+        
+        // Показываем нужную форму
+        if (filterState.currentStep === 1) {
+            document.getElementById('stepClassForm').style.display = 'block';
+            filterState.selectedClass = null;
+            loadClassesForSchool();
+        } else if (filterState.currentStep === 2) {
+            document.getElementById('stepSubjectForm').style.display = 'block';
+            filterState.selectedSubjectId = null;
+            loadSubjectsForClass(filterState.selectedClass);
+        } else if (filterState.currentStep === 3) {
+            document.getElementById('stepTopicForm').style.display = 'block';
+            filterState.selectedTopic = null;
+            loadTopicsForSubject();
+        }
+        
+        updateStepIndicator(filterState.currentStep);
+    }
+}
+
+function goToTestSelection() {
+    // Сбрасываем все и возвращаемся к началу фильтрации
+    currentTemplate = null;
+    currentPage = 0;
+    studentAnswers = {};
+    studentInfo = {};
+    
+    document.getElementById('results').style.display = 'none';
+    document.getElementById('testArea').style.display = 'none';
+    
+    // Если есть фильтрация, возвращаемся к началу
+    if (filterState.cityCode && filterState.schoolCode) {
+        filterState.selectedClass = null;
+        filterState.selectedSubjectId = null;
+        filterState.selectedTopic = null;
+        filterState.currentStep = 1;
+        
+        // Показываем форму выбора класса
+        ['stepSubjectForm', 'stepTopicForm', 'stepTestForm'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+        document.getElementById('stepClassForm').style.display = 'block';
+        
+        // Показываем индикатор прогресса
+        const progressDiv = document.getElementById('filterProgress');
+        if (progressDiv) progressDiv.style.display = 'block';
+        updateStepIndicator(1);
+        
+        // Перезагружаем классы
+        loadClassesForSchool();
+    } else {
+        // Старый режим - перезагружаем страницу
+        window.location.href = '/student';
+    }
+}
+
+// ====================================================================
+//                             ЗАГРУЗКА КЛАССОВ (старый режим)
 // ====================================================================
 
 async function loadClasses() {
@@ -93,7 +411,7 @@ function populateClassSelect(classes) {
 }
 
 // ====================================================================
-//                             ЗАГРУЗКА ШАБЛОНОВ
+//                             ЗАГРУЗКА ШАБЛОНОВ (старый режим)
 // ====================================================================
 
 async function loadTemplateList() {
@@ -128,7 +446,8 @@ async function loadTemplateList() {
 
 async function startTest() {
     const name = document.getElementById('studentName').value.trim();
-    const studentClass = document.getElementById('studentClass').value;
+    const studentClassInput = document.getElementById('studentClass');
+    const studentClass = studentClassInput ? studentClassInput.value : filterState.selectedClass;
     const templateId = document.getElementById('templateSelect').value;
 
     if (!name) {
@@ -161,7 +480,16 @@ async function startTest() {
                 sheetUrl: template.sheet_url
             };
 
-            document.getElementById('studentForm').style.display = 'none';
+            // Скрываем все формы фильтрации
+            ['stepClassForm', 'stepSubjectForm', 'stepTopicForm', 'stepTestForm'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+            
+            // Скрываем индикатор прогресса
+            const progressDiv = document.getElementById('filterProgress');
+            if (progressDiv) progressDiv.style.display = 'none';
+            
             document.getElementById('testArea').style.display = 'block';
             
             // Показываем имя и класс если есть элементы
@@ -171,7 +499,7 @@ async function startTest() {
             const displayName = document.getElementById('displayName');
             const displayClass = document.getElementById('displayClass');
             if (displayName) displayName.textContent = name;
-            if (displayClass) displayClass.textContent = studentClass;showResults
+            if (displayClass) displayClass.textContent = studentClass;
 
             loadTestDocument();
             updateProgress();
@@ -660,11 +988,42 @@ function resetTest() {
 
     document.getElementById('results').style.display = 'none';
     document.getElementById('testArea').style.display = 'none';
-    document.getElementById('studentForm').style.display = 'block';
+    
+    // Если есть фильтрация, возвращаемся к началу
+    if (filterState.cityCode && filterState.schoolCode) {
+        // Сбрасываем состояние фильтрации
+        filterState.selectedClass = null;
+        filterState.selectedSubjectId = null;
+        filterState.selectedTopic = null;
+        filterState.currentStep = 1;
+        
+        // Показываем форму выбора класса
+        ['stepSubjectForm', 'stepTopicForm', 'stepTestForm'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+        document.getElementById('stepClassForm').style.display = 'block';
+        
+        // Показываем индикатор прогресса
+        const progressDiv = document.getElementById('filterProgress');
+        if (progressDiv) progressDiv.style.display = 'block';
+        updateStepIndicator(1);
+        
+        // Перезагружаем классы
+        loadClassesForSchool();
+    } else {
+        // Старый режим
+        const studentForm = document.getElementById('studentForm');
+        if (studentForm) studentForm.style.display = 'block';
+    }
 
-    document.getElementById('studentName').value = '';
-    document.getElementById('studentClass').value = '';
-    document.getElementById('templateSelect').value = '';
+    const nameInput = document.getElementById('studentName');
+    const classInput = document.getElementById('studentClass');
+    const templateSelect = document.getElementById('templateSelect');
+    
+    if (nameInput) nameInput.value = '';
+    if (classInput && !classInput.readOnly) classInput.value = '';
+    if (templateSelect) templateSelect.value = '';
 }
 
 // ====================================================================

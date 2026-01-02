@@ -204,11 +204,11 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Фамилия *</label>
-                            <input type="text" id="lastName" required oninput="autoGenerateUsernameIfEmpty()">
+                            <input type="text" id="lastName" required>
                         </div>
                         <div class="form-group">
                             <label>Имя *</label>
-                            <input type="text" id="firstName" required oninput="autoGenerateUsernameIfEmpty()">
+                            <input type="text" id="firstName" required>
                         </div>
                     </div>
                     
@@ -220,12 +220,12 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Город *</label>
-                            <input type="text" id="city" list="citiesList" required oninput="filterCities(this.value)">
+                            <input type="text" id="city" list="citiesList" required oninput="updateUsernamePreview(); filterCities(this.value)">
                             <datalist id="citiesList"></datalist>
                         </div>
                         <div class="form-group">
                             <label>Код города *</label>
-                            <input type="text" id="cityCode" required pattern="[a-z0-9]{2,20}" title="Только латинские буквы и цифры, 2-20 символов">
+                            <input type="text" id="cityCode" required oninput="updateUsernamePreview()" pattern="[a-z0-9]{2,20}" title="Только латинские буквы и цифры, 2-20 символов">
                         </div>
                     </div>
                     
@@ -237,17 +237,12 @@
                         </div>
                         <div class="form-group">
                             <label>Код школы *</label>
-                            <input type="text" id="schoolCode" required pattern="[a-z0-9]{2,50}" title="Только латинские буквы и цифры, 2-50 символов">
+                            <input type="text" id="schoolCode" required oninput="updateUsernamePreview()" pattern="[a-z0-9]{2,50}" title="Только латинские буквы и цифры, 2-50 символов">
                         </div>
                     </div>
                     
-                    <div class="form-group">
-                        <label>Логин *</label>
-                        <div style="display: flex; gap: 10px; align-items: center;">
-                            <input type="text" id="username" required pattern="[a-z0-9._-]{3,50}" title="Только латинские буквы, цифры, точки, дефисы и подчеркивания (3-50 символов)" style="flex: 1;" placeholder="Будет сгенерирован автоматически">
-                            <button type="button" class="btn-generate" onclick="generateUsername()" style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; white-space: nowrap;">🎲 Автогенерация</button>
-                        </div>
-                        <small style="color: #666; display: block; margin-top: 5px;">Формат: lastname.firstname (например: ivanov.petr)</small>
+                    <div id="usernamePreview" class="username-preview" style="display: none;">
+                        Логин: <strong id="previewUsername"></strong>
                     </div>
                     
                     <div class="form-group">
@@ -314,8 +309,6 @@
             teachers.forEach(teacher => {
                 const tr = document.createElement('tr');
                 const fullName = `${teacher.last_name || ''} ${teacher.first_name || ''}`.trim() || '-';
-                // Убеждаемся, что id - число
-                const teacherId = typeof teacher.id === 'string' ? parseInt(teacher.id) : teacher.id;
                 tr.innerHTML = `
                     <td><strong>${teacher.username}</strong></td>
                     <td>${fullName}</td>
@@ -326,9 +319,9 @@
                     <td>${teacher.tests_count || 0}</td>
                     <td>${teacher.expiration_date ? new Date(teacher.expiration_date).toLocaleDateString('ru-RU') : 'Бессрочно'}</td>
                     <td>
-                        <button class="btn-action btn-edit" onclick="editTeacher(${teacherId})">✏️</button>
-                        <button class="btn-action btn-reset" onclick="resetPassword(${teacherId})">🔑</button>
-                        <button class="btn-action btn-delete" onclick="deleteTeacher(${teacherId})">🗑️</button>
+                        <button class="btn-action btn-edit" onclick="editTeacher(${teacher.id})">✏️</button>
+                        <button class="btn-action btn-reset" onclick="resetPassword(${teacher.id})">🔑</button>
+                        <button class="btn-action btn-delete" onclick="deleteTeacher(${teacher.id})">🗑️</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -343,11 +336,16 @@
             errorDiv.style.display = 'block';
         }
         
-        function autoGenerateUsernameIfEmpty() {
-            // Автоматически генерировать логин, если поле логина пустое
-            const usernameField = document.getElementById('username');
-            if (!usernameField.value.trim()) {
-                generateUsername();
+        function updateUsernamePreview() {
+            const cityCode = document.getElementById('cityCode').value.toLowerCase().trim();
+            const schoolCode = document.getElementById('schoolCode').value.toLowerCase().trim();
+            
+            if (cityCode && schoolCode) {
+                const username = cityCode + schoolCode;
+                document.getElementById('previewUsername').textContent = username;
+                document.getElementById('usernamePreview').style.display = 'block';
+            } else {
+                document.getElementById('usernamePreview').style.display = 'none';
             }
         }
         
@@ -369,84 +367,25 @@
             });
         }
         
-        async function loadCities() {
-            try {
-                const response = await fetch('/api/admin/cities');
-                const data = await response.json();
-                if (data.success) {
-                    const citiesList = document.getElementById('citiesList');
-                    citiesList.innerHTML = '';
-                    data.cities.forEach(city => {
-                        const option = document.createElement('option');
-                        option.value = city;
-                        citiesList.appendChild(option);
-                    });
-                }
-            } catch (error) {
-                console.error('Ошибка загрузки городов:', error);
-            }
-        }
-        
-        async function loadSchools(city = null) {
-            try {
-                let url = '/api/admin/schools';
-                if (city) {
-                    url += `?city=${encodeURIComponent(city)}`;
-                }
-                const response = await fetch(url);
-                const data = await response.json();
-                if (data.success) {
-                    const schoolsList = document.getElementById('schoolsList');
-                    schoolsList.innerHTML = '';
-                    data.schools.forEach(school => {
-                        const option = document.createElement('option');
-                        option.value = school;
-                        schoolsList.appendChild(option);
-                    });
-                }
-            } catch (error) {
-                console.error('Ошибка загрузки школ:', error);
-            }
-        }
-        
-        function filterCities(value) {
-            // При изменении города обновляем список школ
-            if (value && value.trim()) {
-                loadSchools(value.trim());
-            } else {
-                loadSchools();
-            }
-        }
-        
-        function filterSchools(value) {
-            // Функция для фильтрации школ (datalist делает это автоматически)
-        }
-        
         function openCreateModal() {
             document.getElementById('modalTitle').textContent = 'Добавить учителя';
             document.getElementById('teacherForm').reset();
             document.getElementById('teacherId').value = '';
+            document.getElementById('usernamePreview').style.display = 'none';
             document.getElementById('teacherModal').style.display = 'block';
             loadCities();
             loadSchools();
         }
         
         function editTeacher(id) {
-            // Преобразуем id в число для сравнения
-            const teacherId = typeof id === 'string' ? parseInt(id) : id;
-            const teacher = teachers.find(t => t.id === teacherId || t.id === id);
-            if (!teacher) {
-                console.error('Учитель не найден:', id, 'Доступные учителя:', teachers.map(t => ({id: t.id, username: t.username})));
-                alert('Ошибка: Учитель не найден в списке');
-                return;
-            }
+            const teacher = teachers.find(t => t.id === id);
+            if (!teacher) return;
             
             document.getElementById('modalTitle').textContent = 'Редактировать учителя';
             document.getElementById('teacherId').value = teacher.id;
             document.getElementById('firstName').value = teacher.first_name || '';
             document.getElementById('lastName').value = teacher.last_name || '';
             document.getElementById('email').value = teacher.email || '';
-            document.getElementById('username').value = teacher.username || '';
             document.getElementById('city').value = teacher.city || '';
             document.getElementById('cityCode').value = teacher.city_code || '';
             document.getElementById('school').value = teacher.school || '';
@@ -461,6 +400,7 @@
             document.getElementById('maxTestsLimit').value = teacher.max_tests_limit || '';
             document.getElementById('password').value = '';
             document.getElementById('password').required = false;
+            updateUsernamePreview();
             document.getElementById('teacherModal').style.display = 'block';
         }
         
@@ -476,7 +416,6 @@
                 first_name: document.getElementById('firstName').value.trim(),
                 last_name: document.getElementById('lastName').value.trim(),
                 email: document.getElementById('email').value.trim(),
-                username: document.getElementById('username').value.trim(),
                 city: document.getElementById('city').value.trim(),
                 city_code: document.getElementById('cityCode').value.trim().toLowerCase(),
                 school: document.getElementById('school').value.trim(),
@@ -496,7 +435,6 @@
             try {
                 let response;
                 if (id) {
-                    console.log('Редактирование учителя:', id, data);
                     response = await fetch(`/api/admin/teachers/${id}`, {
                         method: 'PUT',
                         headers: {'Content-Type': 'application/json'},
@@ -510,9 +448,7 @@
                     });
                 }
                 
-                console.log('Статус ответа:', response.status);
                 const result = await response.json();
-                console.log('Ответ сервера:', result);
                 
                 if (result.success) {
                     if (result.password && !id) {
@@ -523,21 +459,18 @@
                     closeModal();
                     loadTeachers();
                 } else {
-                    alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
+                    alert('Ошибка: ' + result.error);
                 }
             } catch (error) {
-                console.error('Ошибка при сохранении:', error);
                 alert('Ошибка: ' + error.message);
             }
         });
         
         async function resetPassword(id) {
-            // Преобразуем id в число
-            const teacherId = typeof id === 'string' ? parseInt(id) : id;
             if (!confirm('Сгенерировать новый пароль для этого учителя?')) return;
             
             try {
-                const response = await fetch(`/api/admin/teachers/${teacherId}/reset-password`, {
+                const response = await fetch(`/api/admin/teachers/${id}/reset-password`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({generate: true})
@@ -556,24 +489,18 @@
         }
         
         async function deleteTeacher(id) {
-            // Преобразуем id в число для сравнения
-            const teacherId = typeof id === 'string' ? parseInt(id) : id;
-            const teacher = teachers.find(t => (t.id === teacherId) || (t.id === id));
-            if (!teacher) {
-                alert('Ошибка: Учитель не найден');
-                return;
-            }
-            if (!confirm(`Удалить учителя "${teacher.username}"?\n\nЭто действие нельзя отменить!`)) return;
+            const teacher = teachers.find(t => t.id === id);
+            if (!confirm(`Деактивировать учителя "${teacher.username}"?`)) return;
             
             try {
-                const response = await fetch(`/api/admin/teachers/${teacherId}`, {
+                const response = await fetch(`/api/admin/teachers/${id}`, {
                     method: 'DELETE'
                 });
                 
                 const result = await response.json();
                 
                 if (result.success) {
-                    alert('Учитель удален');
+                    alert('Учитель деактивирован');
                     loadTeachers();
                 } else {
                     alert('Ошибка: ' + result.error);

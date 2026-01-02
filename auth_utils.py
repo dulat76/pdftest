@@ -10,7 +10,7 @@ class AuthManager:
     """Менеджер авторизации, использующий PostgreSQL для данных пользователей."""
     
     def __init__(self):
-        self.db = SessionLocal()
+        pass  # Сессия создается для каждого запроса
     
     def authenticate_user(self, login, password):
         """
@@ -23,9 +23,10 @@ class AuthManager:
         Returns:
             dict: Результат аутентификации
         """
+        db = SessionLocal()
         try:
             # Поиск пользователя по логину
-            user = self.db.query(User).filter(User.username == login).first()
+            user = db.query(User).filter(User.username == login).first()
             
             if not user:
                 return {"success": False, "error": "Неверный логин или пароль"}
@@ -51,16 +52,19 @@ class AuthManager:
             else:
                 days_left = "Бессрочно"
             
-            return {
+            result = {
                 "success": True,
                 "login": user.username,
                 "role": user.role,
                 "user_id": user.id,
                 "days_left": days_left
             }
+            db.close()
+            return result
         
         except Exception as e:
             print(f"Error authenticating user: {e}")
+            db.close()
             return {"success": False, "error": "Ошибка при аутентификации"}
     
     def get_user_by_username(self, username):
@@ -73,10 +77,14 @@ class AuthManager:
         Returns:
             User object or None
         """
+        db = SessionLocal()
         try:
-            return self.db.query(User).filter(User.username == username).first()
+            user = db.query(User).filter(User.username == username).first()
+            db.close()
+            return user
         except Exception as e:
             print(f"Error getting user: {e}")
+            db.close()
             return None
     
     def get_user_by_id(self, user_id):
@@ -89,10 +97,14 @@ class AuthManager:
         Returns:
             User object or None
         """
+        db = SessionLocal()
         try:
-            return self.db.query(User).filter(User.id == user_id).first()
+            user = db.query(User).filter(User.id == user_id).first()
+            db.close()
+            return user
         except Exception as e:
             print(f"Error getting user: {e}")
+            db.close()
             return None
     
     def create_user(self, username, password, role='teacher', **kwargs):
@@ -108,10 +120,12 @@ class AuthManager:
         Returns:
             dict: Результат создания
         """
+        db = SessionLocal()
         try:
             # Проверка существования пользователя
-            existing_user = self.get_user_by_username(username)
+            existing_user = db.query(User).filter(User.username == username).first()
             if existing_user:
+                db.close()
                 return {"success": False, "error": f"Пользователь с логином '{username}' уже существует"}
             
             # Хеширование пароля
@@ -135,13 +149,16 @@ class AuthManager:
                 is_admin=(role == 'superuser')
             )
             
-            self.db.add(user)
-            self.db.commit()
+            db.add(user)
+            db.commit()
+            user_id = user.id
+            db.close()
             
-            return {"success": True, "user_id": user.id, "user": user}
+            return {"success": True, "user_id": user_id, "user": user}
         
         except Exception as e:
-            self.db.rollback()
+            db.rollback()
+            db.close()
             print(f"Error creating user: {e}")
             return {"success": False, "error": f"Ошибка при создании пользователя: {str(e)}"}
     
@@ -156,27 +173,26 @@ class AuthManager:
         Returns:
             dict: Результат обновления
         """
+        db = SessionLocal()
         try:
-            user = self.get_user_by_id(user_id)
+            user = db.query(User).filter(User.id == user_id).first()
             if not user:
+                db.close()
                 return {"success": False, "error": "Пользователь не найден"}
             
             user.password_hash = generate_password_hash(new_password)
             user.updated_at = datetime.utcnow()
             
-            self.db.commit()
+            db.commit()
+            db.close()
             
             return {"success": True, "message": "Пароль успешно обновлен"}
         
         except Exception as e:
-            self.db.rollback()
+            db.rollback()
+            db.close()
             print(f"Error updating password: {e}")
             return {"success": False, "error": f"Ошибка при обновлении пароля: {str(e)}"}
-    
-    def close(self):
-        """Закрыть соединение с БД."""
-        if self.db:
-            self.db.close()
 
 auth_manager = AuthManager()
 

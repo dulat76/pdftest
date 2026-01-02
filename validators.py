@@ -284,17 +284,6 @@ def validate_teacher_data(data: Dict[str, Any]) -> None:
         if field not in data or not data[field]:
             raise ValidationError(f"Не указано обязательное поле: {field}")
     
-    # Валидация логина (если указан)
-    if 'username' in data and data['username']:
-        username = data['username'].strip()
-        if len(username) < 3:
-            raise ValidationError("Логин должен содержать минимум 3 символа")
-        if len(username) > 50:
-            raise ValidationError("Логин слишком длинный (максимум 50 символов)")
-        # Проверка формата: только латинские буквы, цифры, точки, дефисы, подчеркивания
-        if not re.match(r'^[a-z0-9._-]+$', username.lower()):
-            raise ValidationError("Логин может содержать только латинские буквы, цифры, точки, дефисы и подчеркивания")
-    
     # Validate first_name
     first_name = data['first_name'].strip()
     if len(first_name) < 2:

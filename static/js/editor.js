@@ -19,8 +19,9 @@ let fieldCounter = 0;
 document.addEventListener('DOMContentLoaded', function () {
     setupEventListeners();
     loadTemplateList();
-    loadSubjects(); // Загружаем предметы при загрузке страницы
     setupModal();
+    loadSubjects();
+    loadUserInfo();
 });
 
 function setupEventListeners() {
@@ -43,12 +44,6 @@ function setupEventListeners() {
     if (saveBtn) saveBtn.addEventListener('click', saveTemplate);
     const loadTemplateBtn = document.getElementById('loadTemplateBtn');
     if (loadTemplateBtn) loadTemplateBtn.addEventListener('click', loadSelectedTemplate);
-    
-    // Обработчик для поля темы
-    const topicInput = document.getElementById('topic');
-    if (topicInput) {
-        topicInput.addEventListener('input', updateTestUrlPreview);
-    }
 }
 
 
@@ -521,132 +516,9 @@ function updateFieldCount() {
 
 // ==================== Шаблоны ====================
 
-// Функция для генерации topic_slug (упрощенная версия)
-function generateTopicSlug(topic) {
-    const translitMap = {
-        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
-        'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
-        'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
-        'ф': 'f', 'х': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch',
-        'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
-    };
-    
-    let slug = topic.toLowerCase();
-    slug = slug.split('').map(c => translitMap[c] || c).join('');
-    slug = slug.replace(/[^\w\s-]/g, '');
-    slug = slug.replace(/\s+/g, '-');
-    slug = slug.replace(/-+/g, '-');
-    slug = slug.replace(/^-|-$/g, '');
-    return slug.substring(0, 100);
-}
-
-// Получение данных пользователя из API
-let currentUserData = null;
-async function getCurrentUserData() {
-    if (currentUserData) return currentUserData;
-    try {
-        const response = await fetch('/api/teacher/info');
-        const data = await response.json();
-        if (data.success && data.teacher) {
-            currentUserData = data.teacher;
-            return currentUserData;
-        }
-    } catch (e) {
-        console.error('Ошибка получения данных пользователя:', e);
-    }
-    return { username: 'username', city_code: 'city', school_code: 'school' };
-}
-
-// Загрузка списка предметов
-let subjectsList = [];
-async function loadSubjects() {
-    if (subjectsList.length > 0) return subjectsList;
-    try {
-        const response = await fetch('/api/subjects');
-        const data = await response.json();
-        if (data.success) {
-            subjectsList = data.subjects;
-            populateSubjectSelect();
-            return subjectsList;
-        }
-    } catch (e) {
-        console.error('Ошибка загрузки предметов:', e);
-    }
-    return [];
-}
-
-function populateSubjectSelect() {
-    const select = document.getElementById('subjectSelect');
-    if (!select) return;
-    
-    select.innerHTML = '<option value="">Выберите предмет...</option>';
-    
-    subjectsList.forEach(subject => {
-        const option = document.createElement('option');
-        option.value = subject.id;
-        option.textContent = subject.name;
-        option.dataset.slug = subject.name_slug;
-        select.appendChild(option);
-    });
-}
-
-// Обновление preview ссылки
-async function updateTestUrlPreview() {
-    const topicInput = document.getElementById('topic');
-    const classSelect = document.getElementById('classNumber');
-    const subjectSelect = document.getElementById('subjectSelect');
-    
-    if (!topicInput || !classSelect || !subjectSelect) return;
-    
-    const topic = topicInput.value.trim();
-    const classNumber = classSelect.value;
-    const subjectId = subjectSelect.value;
-    
-    if (topic && classNumber && subjectId) {
-        const topicSlug = generateTopicSlug(topic);
-        const userData = await getCurrentUserData();
-        const selectedSubject = subjectsList.find(s => s.id == subjectId);
-        
-        if (userData && selectedSubject) {
-            const baseUrl = 'https://docquiz.predmet.kz';
-            const testUrl = `${baseUrl}/test/${userData.city_code}/${userData.school_code}/${selectedSubject.name_slug}/${topicSlug}`;
-            
-            const previewDiv = document.getElementById('testUrlPreview');
-            const urlText = document.getElementById('testUrlText');
-            if (previewDiv && urlText) {
-                urlText.textContent = testUrl;
-                previewDiv.style.display = 'block';
-            }
-        }
-    } else {
-        const previewDiv = document.getElementById('testUrlPreview');
-        if (previewDiv) previewDiv.style.display = 'none';
-    }
-}
-
-// Копирование ссылки
-function copyTestUrl() {
-    const urlText = document.getElementById('testUrlText');
-    if (urlText) {
-        navigator.clipboard.writeText(urlText.textContent).then(() => {
-            showModal('Ссылка скопирована в буфер обмена!');
-        });
-    }
-}
-
 async function saveTemplate() {
     const templateName = document.getElementById('templateName');
     if (!templateName || !templateName.value.trim()) { showModal('Введите название шаблона'); return; }
-    
-    const topicInput = document.getElementById('topic');
-    if (!topicInput || !topicInput.value.trim()) { showModal('Введите тему теста'); return; }
-    
-    const classSelect = document.getElementById('classNumber');
-    if (!classSelect || !classSelect.value) { showModal('Выберите класс'); return; }
-    
-    const subjectSelect = document.getElementById('subjectSelect');
-    if (!subjectSelect || !subjectSelect.value) { showModal('Выберите предмет'); return; }
-    
     if (currentTemplate.fields.length === 0) { showModal('Добавьте хотя бы одно поле'); return; }
 
     const noAnswers = currentTemplate.fields.filter(f => f.checkable && (!f.variants || f.variants.length === 0));
@@ -656,12 +528,28 @@ async function saveTemplate() {
     saveCurrentPagePositions();
 
     currentTemplate.name = templateName.value.trim();
-    currentTemplate.topic = topicInput.value.trim();
-    currentTemplate.class_number = parseInt(classSelect.value);
-    currentTemplate.subject_id = parseInt(subjectSelect.value);
     currentTemplate.sheet_url = (document.getElementById('sheetUrl')?.value || '').trim();
-    currentTemplate.classes = document.getElementById('availableClasses')?.value
-        .split(',').map(c => c.trim()) || [];
+    const classesStr = document.getElementById('availableClasses')?.value || '';
+    currentTemplate.classes = classesStr.split(',').map(c => c.trim()).filter(c => c) || [];
+    
+    // Извлекаем class_number из первого класса (если есть)
+    if (currentTemplate.classes.length > 0) {
+        const firstClass = currentTemplate.classes[0];
+        const match = firstClass.match(/\d+/);
+        if (match) {
+            currentTemplate.class_number = parseInt(match[0]);
+        }
+    }
+    
+    // Добавляем subject_id и topic
+    const subjectSelect = document.getElementById('subjectSelect');
+    const topicInput = document.getElementById('topicInput');
+    if (subjectSelect && subjectSelect.value) {
+        currentTemplate.subject_id = parseInt(subjectSelect.value);
+    }
+    if (topicInput && topicInput.value.trim()) {
+        currentTemplate.topic = topicInput.value.trim();
+    }
 
     if (!currentTemplate.template_id) currentTemplate.template_id = `tpl_${Date.now()}`;
 
@@ -673,18 +561,13 @@ async function saveTemplate() {
         });
         const result = await response.json();
         if (result.success) {
-            // Обновляем preview ссылки
+            // Показываем ссылку на тест
             if (result.test_url) {
-                const urlText = document.getElementById('testUrlText');
-                if (urlText) {
-                    urlText.textContent = result.test_url;
-                    const previewDiv = document.getElementById('testUrlPreview');
-                    if (previewDiv) previewDiv.style.display = 'block';
-                }
+                showTestLink(result.test_url);
             }
-            showModal('Шаблон сохранен успешно!\n' + (result.test_url ? 'Ссылка: ' + result.test_url : ''));
+            showModal('Шаблон сохранен успешно');
         } else {
-            showModal('Ошибка сохранения: ' + result.error);
+            showModal('Ошибка сохранения: ' + (result.error || 'Неизвестная ошибка'));
         }
         loadTemplateList();
     } catch (err) {
@@ -732,26 +615,15 @@ async function loadSelectedTemplate() {
                 }
             });
             
-            // Обновляем тему, класс и предмет
-            if (template.topic) {
-                const topicInput = document.getElementById('topic');
-                if (topicInput) topicInput.value = template.topic;
+            // Обновляем предмет и тему
+            const subjectSelect = document.getElementById('subjectSelect');
+            const topicInput = document.getElementById('topicInput');
+            if (subjectSelect && template.subject_id) {
+                subjectSelect.value = template.subject_id;
             }
-            
-            if (template.class_number) {
-                const classSelect = document.getElementById('classNumber');
-                if (classSelect) classSelect.value = template.class_number;
+            if (topicInput && template.topic) {
+                topicInput.value = template.topic;
             }
-            
-            if (template.subject_id) {
-                // Убеждаемся что предметы загружены
-                await loadSubjects();
-                const subjectSelect = document.getElementById('subjectSelect');
-                if (subjectSelect) subjectSelect.value = template.subject_id;
-            }
-            
-            // Обновляем preview ссылки
-            updateTestUrlPreview();
             
             // Загружаем документ, который после загрузки изображения сам отрисует поля
             if (template.files?.length > 0) { 
@@ -763,5 +635,79 @@ async function loadSelectedTemplate() {
         } else showModal('Ошибка загрузки: ' + (template.error || 'Неизвестная'));
     } catch (err) {
         showModal('Ошибка: ' + err.message);
+    }
+}
+
+// Загрузка списка предметов
+async function loadSubjects() {
+    try {
+        const response = await fetch('/api/subjects');
+        const result = await response.json();
+        if (result.success) {
+            const select = document.getElementById('subjectSelect');
+            if (select) {
+                select.innerHTML = '<option value="">Выберите предмет...</option>';
+                result.subjects.forEach(subject => {
+                    const option = document.createElement('option');
+                    option.value = subject.id;
+                    option.textContent = subject.name;
+                    select.appendChild(option);
+                });
+            }
+        }
+    } catch (err) {
+        console.error('Ошибка загрузки предметов:', err);
+    }
+}
+
+// Загрузка информации о пользователе
+async function loadUserInfo() {
+    try {
+        const response = await fetch('/api/user/info');
+        const userInfo = await response.json();
+        
+        const cityDisplay = document.getElementById('displayCity');
+        const schoolDisplay = document.getElementById('displaySchool');
+        
+        if (cityDisplay && userInfo.city) {
+            cityDisplay.textContent = userInfo.city;
+        }
+        if (schoolDisplay && userInfo.school) {
+            schoolDisplay.textContent = userInfo.school;
+        }
+    } catch (err) {
+        console.error('Ошибка загрузки информации о пользователе:', err);
+    }
+}
+
+// Показать ссылку на тест
+function showTestLink(url) {
+    const linkSection = document.getElementById('testLinkSection');
+    const linkInput = document.getElementById('testLinkInput');
+    if (linkSection && linkInput) {
+        linkInput.value = url;
+        linkSection.style.display = 'block';
+        // Прокручиваем к ссылке
+        linkSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+}
+
+// Копирование ссылки
+function copyTestLink() {
+    const linkInput = document.getElementById('testLinkInput');
+    if (linkInput) {
+        linkInput.select();
+        linkInput.setSelectionRange(0, 99999); // Для мобильных устройств
+        try {
+            document.execCommand('copy');
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = '✓ Скопировано!';
+            setTimeout(() => {
+                btn.textContent = originalText;
+            }, 2000);
+        } catch (err) {
+            alert('Не удалось скопировать ссылку. Скопируйте вручную: ' + linkInput.value);
+        }
     }
 }

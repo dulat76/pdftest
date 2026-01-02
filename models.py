@@ -1,6 +1,6 @@
 """Database models using SQLAlchemy."""
 from datetime import datetime, date
-from sqlalchemy import create_engine, Column, Integer, String, Text, Float, Boolean, DateTime, Date, JSON, Index, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Text, Float, Boolean, DateTime, Date, JSON, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.pool import QueuePool
@@ -11,10 +11,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Database URL from environment
-# По умолчанию используем локальную SQLite БД для разработки
-# Если нужен PostgreSQL, установите DATABASE_URL в .env
-default_db = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'local_dev.db')
-DATABASE_URL = os.getenv('DATABASE_URL', f'sqlite:///{default_db}')
+# По умолчанию используем PostgreSQL
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://flask_user:flask_password123@185.22.64.9:5432/flask_db')
 DB_SCHEMA = os.getenv('DB_SCHEMA', 'public')
 
 # Create engine with connection pooling
@@ -56,7 +54,7 @@ class User(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(100), unique=True, nullable=False, index=True)
-    email = Column(String(255), unique=True, nullable=False)
+    email = Column(String(255), unique=True, nullable=True)
     password_hash = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
@@ -131,7 +129,7 @@ class SubjectClass(Base):
     __tablename__ = 'subject_classes'
     
     id = Column(Integer, primary_key=True, index=True)
-    subject_id = Column(Integer, ForeignKey('subjects.id', ondelete='CASCADE'), nullable=False, index=True)
+    subject_id = Column(Integer, nullable=False, index=True)
     class_number = Column(Integer, nullable=False)  # Класс от 1 до 11
     
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -143,7 +141,7 @@ class SubjectClass(Base):
 
 
 # Установка relationship после определения SubjectClass
-Subject.classes = relationship('SubjectClass', backref='subject', lazy='dynamic', cascade='all, delete-orphan', primaryjoin='Subject.id == SubjectClass.subject_id')
+Subject.classes = relationship('SubjectClass', backref='subject', lazy='dynamic', cascade='all, delete-orphan')
 
 
 class StudentResult(Base):

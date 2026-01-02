@@ -12,6 +12,39 @@
             .desktop-only { display: none; }
             .mobile-only { display: block; }
         }
+        
+        /* Стили для индикатора шагов */
+        .step-indicator {
+            padding: 8px 15px;
+            border-radius: 20px;
+            background: #f0f0f0;
+            color: #999;
+            font-size: 0.9em;
+            transition: all 0.3s;
+        }
+        
+        .step-indicator.active {
+            background: #27ae60;
+            color: white;
+            font-weight: bold;
+        }
+        
+        #filterProgress {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        @media (max-width: 768px) {
+            #filterProgress {
+                font-size: 0.8em;
+            }
+            .step-indicator {
+                padding: 6px 10px;
+                font-size: 0.8em;
+            }
+        }
     </style>
 </head>
 <body>
@@ -23,13 +56,54 @@
             </div>
         </header>
 
-        <div class="student-form" id="studentForm">
-            <h2>Введите ваши данные</h2>
+        <!-- Индикатор прогресса фильтрации -->
+        <div id="filterProgress" style="margin: 20px 0; text-align: center; display: none;">
+            <div style="display: flex; justify-content: center; gap: 10px; margin-bottom: 10px;">
+                <span id="step1" class="step-indicator active">1. Класс</span>
+                <span>→</span>
+                <span id="step2" class="step-indicator">2. Предмет</span>
+                <span>→</span>
+                <span id="step3" class="step-indicator">3. Тема</span>
+                <span>→</span>
+                <span id="step4" class="step-indicator">4. Тест</span>
+            </div>
+        </div>
+
+        <!-- Этап 1: Выбор класса -->
+        <div class="student-form" id="stepClassForm">
+            <h2>Шаг 1: Выберите ваш класс</h2>
+            <div id="classesContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin: 20px 0;">
+                <!-- Классы будут загружены динамически -->
+            </div>
+            <button onclick="goBack()" id="backBtn" class="btn" style="display: none; margin-top: 20px;">← Назад</button>
+        </div>
+
+        <!-- Этап 2: Выбор предмета -->
+        <div class="student-form" id="stepSubjectForm" style="display: none;">
+            <h2>Шаг 2: Выберите предмет</h2>
+            <div id="subjectsContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 20px 0;">
+                <!-- Предметы будут загружены динамически -->
+            </div>
+            <button onclick="goBack()" class="btn" style="margin-top: 20px;">← Назад</button>
+        </div>
+
+        <!-- Этап 3: Выбор темы -->
+        <div class="student-form" id="stepTopicForm" style="display: none;">
+            <h2>Шаг 3: Выберите тему</h2>
+            <div id="topicsContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin: 20px 0;">
+                <!-- Темы будут загружены динамически -->
+            </div>
+            <button onclick="goBack()" class="btn" style="margin-top: 20px;">← Назад</button>
+        </div>
+
+        <!-- Этап 4: Выбор теста и ввод данных -->
+        <div class="student-form" id="stepTestForm" style="display: none;">
+            <h2>Шаг 4: Выберите тест и введите данные</h2>
 
             <div class="form-group">
-                <label for="templateSelect">Выберите задание:</label>
+                <label for="templateSelect">Выберите тест:</label>
                 <select id="templateSelect" required class="select">
-                    <option value="">Выберите задание...</option>
+                    <option value="">Выберите тест...</option>
                 </select>
             </div>
             
@@ -40,14 +114,11 @@
             
             <div class="form-group">
                 <label for="studentClass">Класс:</label>
-                <select id="studentClass" required class="select">
-                    <option value="">Выберите задание...</option>
-                </select>
+                <input type="text" id="studentClass" required class="input" placeholder="Например: 10А" readonly>
             </div>
 
-            
-
             <button onclick="startTest()" class="btn btn-large">Начать выполнение</button>
+            <button onclick="goBack()" class="btn" style="margin-top: 10px;">← Назад</button>
             
             <div class="mobile-only" style="margin-top: 20px; padding: 10px; background: #f8f9fa; border-radius: 5px; font-size: 0.8rem;">
                 <strong>💡 Подсказка:</strong> Для удобства работы поверните устройство в альбомную ориентацию
@@ -103,7 +174,7 @@
             </div>
 
             <button onclick="resetTest()" class="btn">🔄 Выполнить еще раз</button>
-            <button onclick="window.location.href='/student'" class="btn" style="margin-top: 10px;">📋 Выбрать другое задание</button>
+            <button onclick="goToTestSelection()" class="btn" style="margin-top: 10px;">📋 Выбрать другое задание</button>
         </div>
     </div>
 
@@ -115,57 +186,6 @@
         </div>
     </div>
 
-    {% if template_data %}
-    <script>
-        // Передаем данные теста в глобальную переменную для использования в student.js
-        window.serverTemplateData = {{ template_data | tojson }};
-        window.serverTemplateId = '{{ template_id }}';
-    </script>
-    {% endif %}
     <script src="/static/js/student.js"></script>
-    {% if template_data %}
-    <script>
-        // Автоматическая загрузка теста после загрузки student.js
-        document.addEventListener('DOMContentLoaded', function() {
-            if (window.serverTemplateData && window.serverTemplateId) {
-                // Скрываем форму выбора
-                const studentForm = document.getElementById('studentForm');
-                if (studentForm) {
-                    studentForm.style.display = 'none';
-                }
-                
-                // Устанавливаем данные теста
-                if (typeof currentTemplate !== 'undefined') {
-                    currentTemplate = window.serverTemplateData;
-                    
-                    // Устанавливаем studentInfo для проверки ответов
-                    // studentInfo должен быть объявлен в student.js, но если нет - создаем
-                    if (typeof studentInfo === 'undefined') {
-                        window.studentInfo = {};
-                    }
-                    studentInfo = {
-                        name: '',
-                        class: '',
-                        templateId: window.serverTemplateId,
-                        sheetUrl: window.serverTemplateData.sheet_url || null
-                    };
-                    
-                    // Показываем область теста
-                    const testArea = document.getElementById('testArea');
-                    if (testArea) {
-                        testArea.style.display = 'block';
-                    }
-                    
-                    // Загружаем документ
-                    if (typeof loadTestDocument === 'function') {
-                        loadTestDocument();
-                    }
-                } else {
-                    console.error('currentTemplate не определен в student.js');
-                }
-            }
-        });
-    </script>
-    {% endif %}
 </body>
 </html>

@@ -226,14 +226,6 @@
                         <textarea id="subjectDescription" placeholder="Описание предмета (необязательно)"></textarea>
                     </div>
                     
-                    <div class="form-group">
-                        <label style="display: flex; align-items: center; cursor: pointer;">
-                            <input type="checkbox" id="subjectIsActive" style="margin-right: 8px; width: auto;">
-                            <span>Активен</span>
-                        </label>
-                        <small style="color: #666; display: block; margin-top: 5px;">Неактивные предметы не будут доступны для выбора при создании тестов</small>
-                    </div>
-                    
                     <div class="modal-actions">
                         <button type="button" onclick="closeModal()" style="padding: 10px 20px; background: #95a5a6; color: white; border: none; border-radius: 6px; cursor: pointer;">Отмена</button>
                         <button type="submit" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">Сохранить</button>
@@ -284,8 +276,6 @@
                     const sortedClasses = [...subject.classes].sort((a, b) => a - b);
                     classesDisplay = sortedClasses.join(', ');
                 }
-                // Убеждаемся, что id - число
-                const subjectId = typeof subject.id === 'string' ? parseInt(subject.id) : subject.id;
                 tr.innerHTML = `
                     <td><strong>${subject.name}</strong></td>
                     <td><code style="background: #e9ecef; padding: 2px 6px; border-radius: 3px;">${subject.name_slug}</code></td>
@@ -293,11 +283,8 @@
                     <td>${subject.description || '-'}</td>
                     <td><span class="status-badge ${subject.is_active ? 'status-active' : 'status-inactive'}">${subject.is_active ? 'Активен' : 'Неактивен'}</span></td>
                     <td>
-                        <button class="btn-action btn-edit" onclick="editSubject(${subjectId})">✏️</button>
-                        ${subject.is_active ? 
-                            `<button class="btn-action btn-delete" onclick="deleteSubject(${subjectId})">🗑️</button>` :
-                            `<button class="btn-action" style="background: #27ae60; color: white;" onclick="activateSubject(${subjectId})">✓ Активировать</button>`
-                        }
+                        <button class="btn-action btn-edit" onclick="editSubject(${subject.id})">✏️</button>
+                        <button class="btn-action btn-delete" onclick="deleteSubject(${subject.id})">🗑️</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -316,7 +303,6 @@
             document.getElementById('modalTitle').textContent = 'Добавить предмет';
             document.getElementById('subjectForm').reset();
             document.getElementById('subjectId').value = '';
-            document.getElementById('subjectIsActive').checked = true; // По умолчанию активен
             // Сброс всех checkbox классов
             document.querySelectorAll('.class-checkbox').forEach(cb => cb.checked = false);
             document.getElementById('subjectModal').style.display = 'block';
@@ -330,7 +316,6 @@
             document.getElementById('subjectId').value = subject.id;
             document.getElementById('subjectName').value = subject.name;
             document.getElementById('subjectDescription').value = subject.description || '';
-            document.getElementById('subjectIsActive').checked = subject.is_active !== false; // По умолчанию true
             // Отметить выбранные классы
             document.querySelectorAll('.class-checkbox').forEach(cb => {
                 cb.checked = subject.classes && subject.classes.includes(parseInt(cb.value));
@@ -359,8 +344,7 @@
             const data = {
                 name: document.getElementById('subjectName').value.trim(),
                 description: document.getElementById('subjectDescription').value.trim(),
-                classes: selectedClasses,
-                is_active: document.getElementById('subjectIsActive').checked
+                classes: selectedClasses
             };
             
             try {
@@ -394,59 +378,18 @@
         });
         
         async function deleteSubject(id) {
-            // Преобразуем id в число для сравнения
-            const subjectId = typeof id === 'string' ? parseInt(id) : id;
-            const subject = subjects.find(s => (s.id === subjectId) || (s.id === id));
-            if (!subject) {
-                alert('Ошибка: Предмет не найден');
-                return;
-            }
-            if (!confirm(`Удалить предмет "${subject.name}"?\n\nЭто действие нельзя отменить!`)) return;
+            const subject = subjects.find(s => s.id === id);
+            if (!confirm(`Деактивировать предмет "${subject.name}"?`)) return;
             
             try {
-                const response = await fetch(`/api/admin/subjects/${subjectId}`, {
+                const response = await fetch(`/api/admin/subjects/${id}`, {
                     method: 'DELETE'
                 });
                 
                 const result = await response.json();
                 
                 if (result.success) {
-                    alert('Предмет удален');
-                    loadSubjects();
-                } else {
-                    alert('Ошибка: ' + result.error);
-                }
-            } catch (error) {
-                alert('Ошибка: ' + error.message);
-            }
-        }
-        
-        async function activateSubject(id) {
-            // Преобразуем id в число для сравнения
-            const subjectId = typeof id === 'string' ? parseInt(id) : id;
-            const subject = subjects.find(s => (s.id === subjectId) || (s.id === id));
-            if (!subject) {
-                alert('Ошибка: Предмет не найден');
-                return;
-            }
-            if (!confirm(`Активировать предмет "${subject.name}"?`)) return;
-            
-            try {
-                const response = await fetch(`/api/admin/subjects/${subjectId}`, {
-                    method: 'PUT',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        name: subject.name,
-                        description: subject.description || '',
-                        classes: subject.classes || [],
-                        is_active: true
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    alert('Предмет активирован');
+                    alert('Предмет деактивирован');
                     loadSubjects();
                 } else {
                     alert('Ошибка: ' + result.error);

@@ -10,12 +10,12 @@ from datetime import datetime, date
 import re
 from config import Config
 from auth_utils import auth_manager, login_required, superuser_required
+from models import SessionLocal, User, Template, AuditLog, Subject, SubjectClass
+from validators import ValidationError, validate_teacher_data, validate_topic, validate_topic_slug, validate_subject_classes
+from utils import generate_username, generate_topic_slug, generate_random_password
 from ai_checker import AIAnswerChecker
 from dataclasses import asdict
 from flask import send_from_directory
-from models import SessionLocal, User, Template, AuditLog, Subject, SubjectClass
-from validators import ValidationError, validate_teacher_data, validate_topic, validate_topic_slug, validate_subject_classes
-from utils import generate_username, generate_username_from_name, generate_topic_slug, generate_random_password, sanitize_username
 
 AI_AVAILABLE = False
 checker = None
@@ -59,13 +59,6 @@ app.config.from_object(Config)
 app.secret_key = app.config['SECRET_KEY']
 
 Config.create_directories()
-# Убеждаемся, что директории имеют правильные права доступа
-for folder in [Config.UPLOAD_FOLDER, Config.TEMPLATES_FOLDER, Config.STATIC_FOLDER]:
-    if os.path.exists(folder):
-        try:
-            os.chmod(folder, 0o755)
-        except Exception as e:
-            print(f"Не удалось установить права доступа для {folder}: {e}")
 # Дополнительно создаем папку для логов, если ее нет
 # Загружаем настройки AI при старте, чтобы ключ был доступен
 from ai_config import AIConfig
@@ -418,11 +411,34 @@ def clear_ai_logs():
 @login_required
 def user_info():
     """Информация о текущем пользователе"""
-    return jsonify({
-        'username': session.get('login', 'Гость'),
-        'role': session.get('role'),
-        'logged_in': session.get('logged_in', False)
-    })
+    try:
+        db = SessionLocal()
+        user = db.query(User).filter(User.username == session.get('login')).first()
+        db.close()
+        
+        if user:
+            return jsonify({
+                'username': user.username,
+                'role': user.role,
+                'city': user.city,
+                'city_code': user.city_code,
+                'school': user.school,
+                'school_code': user.school_code,
+                'logged_in': session.get('logged_in', False)
+            })
+        else:
+            return jsonify({
+                'username': session.get('login', 'Гость'),
+                'role': session.get('role'),
+                'logged_in': session.get('logged_in', False)
+            })
+    except Exception as e:
+        return jsonify({
+            'username': session.get('login', 'Гость'),
+            'role': session.get('role'),
+            'logged_in': session.get('logged_in', False),
+            'error': str(e)
+        })
 
 
 # ==========================
@@ -539,38 +555,6 @@ def list_teachers():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/teacher/info')
-@login_required
-def get_teacher_info():
-    """Получение данных текущего учителя (для использования в редакторе)"""
-    try:
-        username = session.get('username') or session.get('login')
-        if not username:
-            return jsonify({'success': False, 'error': 'Пользователь не авторизован'}), 401
-        
-        db = SessionLocal()
-        teacher = db.query(User).filter(User.username == username).first()
-        
-        if not teacher:
-            db.close()
-            return jsonify({'success': False, 'error': 'Учитель не найден'}), 404
-        
-        teacher_data = {
-            'username': teacher.username,
-            'city': teacher.city,
-            'city_code': teacher.city_code,
-            'school': teacher.school,
-            'school_code': teacher.school_code
-        }
-        
-        db.close()
-        
-        return jsonify({'success': True, 'teacher': teacher_data})
-    
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
 @app.route('/api/admin/teachers', methods=['POST'])
 @superuser_required
 def create_teacher():
@@ -581,28 +565,11 @@ def create_teacher():
         # Валидация данных
         validate_teacher_data(data)
         
+        # Генерация логина
+        username = generate_username(data['city_code'], data['school_code'])
+        
+        # Проверка уникальности логина и email
         db = SessionLocal()
-        
-        # Генерация или использование логина
-        if 'username' in data and data['username'] and data['username'].strip():
-            # Использовать предоставленный логин
-            username = sanitize_username(data['username'].strip())
-            if not username:
-                db.close()
-                return jsonify({
-                    'success': False,
-                    'error': 'Логин не может быть пустым'
-                }), 400
-        else:
-            # Автогенерация логина из имени
-            existing_usernames = [u[0] for u in db.query(User.username).all()]
-            username = generate_username_from_name(
-                data['last_name'],
-                data['first_name'],
-                existing_usernames
-            )
-        
-        # Проверка уникальности логина
         existing_user = db.query(User).filter(User.username == username).first()
         if existing_user:
             db.close()
@@ -641,8 +608,10 @@ def create_teacher():
                 db.close()
                 return jsonify({
                     'success': False,
-                    'error': 'Неверный формат даты (ожидается YYYY-MM-DD)'
+                    'error': 'Некорректный формат даты (используйте YYYY-MM-DD)'
                 }), 400
+        
+        db.close()
         
         # Создание пользователя
         result = auth_manager.create_user(
@@ -652,19 +621,15 @@ def create_teacher():
             first_name=data['first_name'].strip(),
             last_name=data['last_name'].strip(),
             email=data['email'].strip(),
-            city=data['city'],
-            city_code=data['city_code'],
-            school=data['school'],
-            school_code=data['school_code'],
+            city=data['city'].strip(),
+            city_code=data['city_code'].strip().lower(),
+            school=data['school'].strip(),
+            school_code=data['school_code'].strip().lower(),
             expiration_date=expiration_date,
-            max_tests_limit=data.get('max_tests_limit'),
-            is_active=True
+            max_tests_limit=data.get('max_tests_limit')
         )
         
-        db.close()
-        
         if result['success']:
-            # Логирование
             log_audit_action(
                 action='create_teacher',
                 target_type='teacher',
@@ -746,25 +711,7 @@ def get_teacher(teacher_id):
 def update_teacher(teacher_id):
     """Обновление данных учителя"""
     try:
-        print(f"[UPDATE_TEACHER] Начало обновления учителя ID={teacher_id}")
         data = request.get_json()
-        print(f"[UPDATE_TEACHER] Получены данные: {data}")
-        
-        if not data:
-            print(f"[UPDATE_TEACHER] Ошибка: данные не получены")
-            return jsonify({'success': False, 'error': 'Данные не получены'}), 400
-        
-        # Базовая валидация обязательных полей
-        if 'first_name' in data and not data['first_name']:
-            print(f"[UPDATE_TEACHER] Ошибка: имя пустое")
-            return jsonify({'success': False, 'error': 'Имя не может быть пустым'}), 400
-        if 'last_name' in data and not data['last_name']:
-            print(f"[UPDATE_TEACHER] Ошибка: фамилия пустая")
-            return jsonify({'success': False, 'error': 'Фамилия не может быть пустой'}), 400
-        if 'email' in data and not data['email']:
-            print(f"[UPDATE_TEACHER] Ошибка: email пустой")
-            return jsonify({'success': False, 'error': 'Email не может быть пустым'}), 400
-        
         db = SessionLocal()
         
         teacher = db.query(User).filter(
@@ -773,107 +720,74 @@ def update_teacher(teacher_id):
         ).first()
         
         if not teacher:
-            print(f"[UPDATE_TEACHER] Ошибка: учитель с ID={teacher_id} не найден")
             db.close()
             return jsonify({'success': False, 'error': 'Учитель не найден'}), 404
         
-        print(f"[UPDATE_TEACHER] Учитель найден: {teacher.username}")
-        
-        # Обновление логина
-        if 'username' in data and data['username']:
-            new_username = sanitize_username(data['username'].strip())
-            if not new_username:
-                db.close()
-                return jsonify({
-                    'success': False,
-                    'error': 'Логин не может быть пустым'
-                }), 400
-            # Проверка уникальности логина только если логин изменился
-            if new_username != teacher.username:
-                existing_username = db.query(User).filter(
-                    User.username == new_username,
-                    User.id != teacher_id
-                ).first()
-                if existing_username:
-                    db.close()
-                    return jsonify({
-                        'success': False,
-                        'error': f'Пользователь с логином "{new_username}" уже существует'
-                    }), 400
-                teacher.username = new_username
-        
-        # Обновление полей ФИО и email
+        # Обновление полей
         if 'first_name' in data:
             teacher.first_name = data['first_name'].strip()
         if 'last_name' in data:
             teacher.last_name = data['last_name'].strip()
         if 'email' in data:
-            new_email = data['email'].strip()
-            # Проверка уникальности email только если email изменился
-            if new_email != teacher.email:
-                existing_email = db.query(User).filter(
-                    User.email == new_email,
-                    User.id != teacher_id
-                ).first()
-                if existing_email:
+            # Проверка уникальности email
+            existing_email = db.query(User).filter(
+                User.email == data['email'].strip(),
+                User.id != teacher_id
+            ).first()
+            if existing_email:
+                db.close()
+                return jsonify({
+                    'success': False,
+                    'error': f'Пользователь с email "{data["email"]}" уже существует'
+                }), 400
+            teacher.email = data['email'].strip()
+        if 'city' in data:
+            teacher.city = data['city'].strip()
+        if 'city_code' in data:
+            teacher.city_code = data['city_code'].strip().lower()
+        if 'school' in data:
+            teacher.school = data['school'].strip()
+        if 'school_code' in data:
+            teacher.school_code = data['school_code'].strip().lower()
+        if 'expiration_date' in data:
+            if data['expiration_date']:
+                try:
+                    teacher.expiration_date = datetime.strptime(data['expiration_date'], '%Y-%m-%d').date()
+                except ValueError:
                     db.close()
                     return jsonify({
                         'success': False,
-                        'error': f'Пользователь с email "{new_email}" уже существует'
+                        'error': 'Некорректный формат даты (используйте YYYY-MM-DD)'
                     }), 400
-                teacher.email = new_email
-        
-        # Обновление полей
-        if 'city' in data:
-            teacher.city = data['city']
-        if 'city_code' in data:
-            teacher.city_code = data['city_code']
-        if 'school' in data:
-            teacher.school = data['school']
-        if 'school_code' in data:
-            teacher.school_code = data['school_code']
-        if 'is_active' in data:
-            teacher.is_active = data['is_active']
-        if 'expiration_date' in data:
-            if data['expiration_date']:
-                teacher.expiration_date = datetime.strptime(data['expiration_date'], '%Y-%m-%d').date()
             else:
                 teacher.expiration_date = None
         if 'max_tests_limit' in data:
             teacher.max_tests_limit = data['max_tests_limit']
+        if 'is_active' in data:
+            teacher.is_active = data['is_active']
         
         teacher.updated_at = datetime.utcnow()
         
-        try:
-            db.commit()
-            # Логирование
-            log_audit_action(
-                action='update_teacher',
-                target_type='teacher',
-                target_id=teacher_id,
-                details=data
-            )
-            db.close()
-            return jsonify({'success': True, 'message': 'Данные учителя обновлены'})
-        except Exception as commit_error:
-            db.rollback()
-            db.close()
-            print(f"Ошибка при коммите изменений учителя {teacher_id}: {commit_error}")
-            return jsonify({'success': False, 'error': f'Ошибка при сохранении: {str(commit_error)}'}), 500
+        db.commit()
+        db.close()
+        
+        log_audit_action(
+            action='update_teacher',
+            target_type='teacher',
+            target_id=teacher_id,
+            details=data
+        )
+        
+        return jsonify({'success': True, 'message': 'Данные учителя обновлены'})
     
-    except ValidationError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
-        import traceback
-        print(f"Ошибка при обновлении учителя {teacher_id}: {e}")
-        print(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/admin/teachers/<int:teacher_id>', methods=['DELETE'])
 @superuser_required
 def delete_teacher(teacher_id):
-    """Удаление учителя (физическое удаление из БД)"""
+    """Удаление учителя (мягкое удаление через is_active=False)"""
     try:
         db = SessionLocal()
         
@@ -886,33 +800,24 @@ def delete_teacher(teacher_id):
             db.close()
             return jsonify({'success': False, 'error': 'Учитель не найден'}), 404
         
-        # Сохраняем данные для логирования до удаления
-        username = teacher.username
-        teacher_data = {
-            'username': username,
-            'first_name': teacher.first_name,
-            'last_name': teacher.last_name,
-            'email': teacher.email
-        }
+        # Мягкое удаление
+        teacher.is_active = False
+        teacher.updated_at = datetime.utcnow()
         
-        # Физическое удаление
-        db.delete(teacher)
         db.commit()
         db.close()
         
-        # Логирование (после закрытия сессии)
+        # Логирование
         log_audit_action(
             action='delete_teacher',
             target_type='teacher',
             target_id=teacher_id,
-            details=teacher_data
+            details={'username': teacher.username}
         )
         
-        return jsonify({'success': True, 'message': 'Учитель удален'})
+        return jsonify({'success': True, 'message': 'Учитель деактивирован'})
     
     except Exception as e:
-        db.rollback()
-        db.close()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -968,105 +873,6 @@ def generate_password():
     return jsonify({'success': True, 'password': password})
 
 
-@app.route('/admin/audit-logs', methods=['GET'])
-@superuser_required
-def get_audit_logs():
-    """Получение логов действий (только для супер-пользователя)"""
-    try:
-        db = SessionLocal()
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 50, type=int)
-        
-        query = db.query(AuditLog)
-        
-        total = query.count()
-        logs = query.order_by(AuditLog.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
-        
-        logs_data = [{
-            'id': log.id,
-            'user_id': log.user_id,
-            'username': log.username,
-            'action': log.action,
-            'target_type': log.target_type,
-            'target_id': log.target_id,
-            'details': log.details,
-            'ip_address': log.ip_address,
-            'created_at': log.created_at.isoformat() if log.created_at else None
-        } for log in logs]
-        
-        db.close()
-        
-        return jsonify({
-            'success': True,
-            'logs': logs_data,
-            'total': total,
-            'page': page,
-            'per_page': per_page
-        })
-    
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-# ==========================
-# API ДЛЯ ПОЛУЧЕНИЯ СПИСКОВ ГОРОДОВ И ШКОЛ
-# ==========================
-
-@app.route('/api/admin/cities', methods=['GET'])
-@superuser_required
-def get_cities():
-    """Получить список уникальных городов из БД"""
-    try:
-        db = SessionLocal()
-        cities = db.query(User.city).filter(
-            User.city.isnot(None),
-            User.city != ''
-        ).distinct().order_by(User.city).all()
-        
-        cities_list = [city[0] for city in cities if city[0]]
-        
-        db.close()
-        
-        return jsonify({
-            'success': True,
-            'cities': cities_list
-        })
-    
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/admin/schools', methods=['GET'])
-@superuser_required
-def get_schools():
-    """Получить список уникальных школ из БД (с опциональным фильтром по городу)"""
-    try:
-        db = SessionLocal()
-        city_filter = request.args.get('city')
-        
-        query = db.query(User.school).filter(
-            User.school.isnot(None),
-            User.school != ''
-        )
-        
-        if city_filter:
-            query = query.filter(User.city == city_filter)
-        
-        schools = query.distinct().order_by(User.school).all()
-        
-        schools_list = [school[0] for school in schools if school[0]]
-        
-        db.close()
-        
-        return jsonify({
-            'success': True,
-            'schools': schools_list
-        })
-    
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
 # ==========================
 # API ДЛЯ УПРАВЛЕНИЯ ПРЕДМЕТАМИ
 # ==========================
@@ -1074,60 +880,35 @@ def get_schools():
 @app.route('/api/admin/subjects', methods=['GET'])
 @superuser_required
 def list_subjects():
-    """Список всех предметов (только для супер-пользователя) - показывает все предметы, включая неактивные"""
+    """Список всех предметов"""
     try:
         db = SessionLocal()
-        # В админ-панели показываем все предметы (и активные, и неактивные)
-        subjects = db.query(Subject).order_by(Subject.name).all()
+        include_inactive = request.args.get('include_inactive', 'false').lower() == 'true'
+        
+        query = db.query(Subject)
+        if not include_inactive:
+            query = query.filter(Subject.is_active == True)
+        
+        subjects = query.order_by(Subject.name).all()
         
         subjects_data = []
-        for s in subjects:
+        for subject in subjects:
             # Получаем классы для предмета
-            classes = db.query(SubjectClass.class_number).filter(
-                SubjectClass.subject_id == s.id
-            ).order_by(SubjectClass.class_number).all()
-            classes_list = [c[0] for c in classes]
+            classes = [sc.class_number for sc in subject.classes.all()]
             
             subjects_data.append({
-                'id': s.id,
-                'name': s.name,
-                'name_slug': s.name_slug,
-                'description': s.description,
-                'is_active': s.is_active,
-                'classes': classes_list,
-                'created_at': s.created_at.isoformat() if s.created_at else None
+                'id': subject.id,
+                'name': subject.name,
+                'name_slug': subject.name_slug,
+                'description': subject.description,
+                'is_active': subject.is_active,
+                'classes': sorted(classes),
+                'created_at': subject.created_at.isoformat() if subject.created_at else None
             })
         
         db.close()
         
-        return jsonify({
-            'success': True,
-            'subjects': subjects_data
-        })
-    
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/subjects', methods=['GET'])
-def get_subjects():
-    """Получение списка активных предметов (публичный API)"""
-    try:
-        db = SessionLocal()
-        subjects = db.query(Subject).filter(Subject.is_active == True).order_by(Subject.name).all()
-        
-        subjects_data = [{
-            'id': s.id,
-            'name': s.name,
-            'name_slug': s.name_slug
-        } for s in subjects]
-        
-        db.close()
-        
-        return jsonify({
-            'success': True,
-            'subjects': subjects_data
-        })
+        return jsonify({'success': True, 'subjects': subjects_data})
     
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -1139,38 +920,24 @@ def create_subject():
     """Создание нового предмета"""
     try:
         data = request.get_json()
+        name = data.get('name', '').strip()
+        description = data.get('description', '').strip()
+        classes = data.get('classes', [])
         
-        if not data.get('name') or not data['name'].strip():
-            return jsonify({
-                'success': False,
-                'error': 'Название предмета обязательно'
-            }), 400
+        if not name:
+            return jsonify({'success': False, 'error': 'Название предмета не может быть пустым'}), 400
         
         # Валидация классов
-        classes = data.get('classes', [])
-        if not isinstance(classes, list):
-            return jsonify({
-                'success': False,
-                'error': 'Классы должны быть массивом'
-            }), 400
+        validate_subject_classes(classes)
         
-        try:
-            validate_subject_classes(classes)
-        except ValidationError as e:
-            return jsonify({
-                'success': False,
-                'error': str(e)
-            }), 400
-        
-        name = data['name'].strip()
-        name_slug = generate_topic_slug(name)  # Используем ту же функцию для генерации slug
+        # Генерация slug
+        name_slug = generate_topic_slug(name)
         
         db = SessionLocal()
         
-        # Проверка уникальности (проверяем только среди активных предметов)
+        # Проверка уникальности
         existing = db.query(Subject).filter(
-            ((Subject.name == name) | (Subject.name_slug == name_slug)),
-            Subject.is_active == True
+            (Subject.name == name) | (Subject.name_slug == name_slug)
         ).first()
         
         if existing:
@@ -1184,14 +951,13 @@ def create_subject():
         subject = Subject(
             name=name,
             name_slug=name_slug,
-            description=data.get('description', ''),
+            description=description,
             is_active=True
         )
-        
         db.add(subject)
-        db.flush()  # Получаем ID предмета
+        db.flush()  # Получаем ID
         
-        # Создание связей с классами
+        # Добавление классов
         for class_num in classes:
             subject_class = SubjectClass(
                 subject_id=subject.id,
@@ -1203,7 +969,6 @@ def create_subject():
         subject_id = subject.id
         db.close()
         
-        # Логирование
         log_audit_action(
             action='create_subject',
             target_type='subject',
@@ -1222,6 +987,8 @@ def create_subject():
             'message': f'Предмет "{name}" успешно создан'
         }), 201
     
+    except ValidationError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -1262,35 +1029,20 @@ def update_subject(subject_id):
             subject.name_slug = new_slug
         
         if 'description' in data:
-            subject.description = data['description']
+            subject.description = data['description'].strip()
         
         if 'is_active' in data:
             subject.is_active = data['is_active']
         
         # Обновление классов
         if 'classes' in data:
-            classes = data['classes']
-            if not isinstance(classes, list):
-                db.close()
-                return jsonify({
-                    'success': False,
-                    'error': 'Классы должны быть массивом'
-                }), 400
-            
-            try:
-                validate_subject_classes(classes)
-            except ValidationError as e:
-                db.close()
-                return jsonify({
-                    'success': False,
-                    'error': str(e)
-                }), 400
+            validate_subject_classes(data['classes'])
             
             # Удаляем старые связи
             db.query(SubjectClass).filter(SubjectClass.subject_id == subject_id).delete()
             
-            # Создаем новые связи
-            for class_num in classes:
+            # Добавляем новые
+            for class_num in data['classes']:
                 subject_class = SubjectClass(
                     subject_id=subject_id,
                     class_number=class_num
@@ -1302,7 +1054,6 @@ def update_subject(subject_id):
         db.commit()
         db.close()
         
-        # Логирование
         log_audit_action(
             action='update_subject',
             target_type='subject',
@@ -1312,6 +1063,8 @@ def update_subject(subject_id):
         
         return jsonify({'success': True, 'message': 'Предмет обновлен'})
     
+    except ValidationError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -1319,7 +1072,7 @@ def update_subject(subject_id):
 @app.route('/api/admin/subjects/<int:subject_id>', methods=['DELETE'])
 @superuser_required
 def delete_subject(subject_id):
-    """Удаление предмета (физическое удаление из БД)"""
+    """Удаление предмета (мягкое удаление)"""
     try:
         db = SessionLocal()
         
@@ -1329,33 +1082,24 @@ def delete_subject(subject_id):
             db.close()
             return jsonify({'success': False, 'error': 'Предмет не найден'}), 404
         
-        # Сохраняем данные для логирования до удаления
-        subject_name = subject.name
-        subject_slug = subject.name_slug
-        subject_data = {
-            'name': subject_name,
-            'name_slug': subject_slug,
-            'description': subject.description
-        }
+        # Мягкое удаление
+        subject.is_active = False
+        subject.updated_at = datetime.utcnow()
         
-        # Физическое удаление
-        db.delete(subject)
         db.commit()
         db.close()
         
-        # Логирование (после закрытия сессии)
+        # Логирование
         log_audit_action(
             action='delete_subject',
             target_type='subject',
             target_id=subject_id,
-            details=subject_data
+            details={'name': subject.name}
         )
         
-        return jsonify({'success': True, 'message': 'Предмет удален'})
+        return jsonify({'success': True, 'message': 'Предмет деактивирован'})
     
     except Exception as e:
-        db.rollback()
-        db.close()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -1405,179 +1149,271 @@ def logout():
     session.pop('login', None)
     return redirect(url_for('login'))
 
-@app.route('/test/<city_code>/<school_code>/<subject_slug>/<topic_slug>')
-def test_by_link(city_code, school_code, subject_slug, topic_slug):
-    """
-    Публичный доступ к тесту по уникальной ссылке.
-    Новый формат: /test/<city_code>/<school_code>/<subject_slug>/<topic_slug>
-    """
-    try:
-        print(f"[TEST_BY_LINK] Поиск теста: city_code={city_code}, school_code={school_code}, subject_slug={subject_slug}, topic_slug={topic_slug}")
-        db = SessionLocal()
-        
-        # Поиск учителя по city_code и school_code напрямую
-        # Теперь логины генерируются из ФИО, поэтому ищем по city_code и school_code
-        user = db.query(User).filter(
-            User.city_code == city_code,
-            User.school_code == school_code,
-            User.role == 'teacher',
-            User.is_active == True
-        ).first()
-        
-        if not user:
-            print(f"[TEST_BY_LINK] Учитель не найден: city_code={city_code}, school_code={school_code}")
-            db.close()
-            return render_template('error.html', 
-                error_code=404,
-                error_message='Тест не найден',
-                error_description='Учитель не найден. Проверьте правильность ссылки.'
-            ), 404
-        
-        username = user.username  # Используем реальный username для поиска теста
-        print(f"[TEST_BY_LINK] Учитель найден: username={username}")
-        
-        # Поиск предмета по slug
-        subject = db.query(Subject).filter(
-            Subject.name_slug == subject_slug,
-            Subject.is_active == True
-        ).first()
-        
-        if not subject:
-            print(f"[TEST_BY_LINK] Предмет не найден: subject_slug={subject_slug}")
-            db.close()
-            return render_template('error.html', 
-                error_code=404,
-                error_message='Тест не найден',
-                error_description='Предмет не найден. Проверьте правильность ссылки.'
-            ), 404
-        
-        print(f"[TEST_BY_LINK] Предмет найден: subject_id={subject.id}, name={subject.name}")
-        
-        # Поиск теста по username, subject_id и topic_slug
-        template = db.query(Template).filter(
-            Template.created_by_username == username,
-            Template.subject_id == subject.id,
-            Template.topic_slug == topic_slug,
-            Template.is_active == True
-        ).first()
-        
-        if not template:
-            # Проверим, какие тесты есть у этого учителя для отладки
-            all_templates = db.query(Template).filter(
-                Template.created_by_username == username,
-                Template.subject_id == subject.id,
-                Template.is_active == True
-            ).all()
-            print(f"[TEST_BY_LINK] Тест не найден. Доступные тесты для username={username}, subject_id={subject.id}:")
-            for t in all_templates:
-                print(f"  - template_id={t.template_id}, topic={t.topic}, topic_slug={t.topic_slug}")
-            
-            db.close()
-            return render_template('error.html', 
-                error_code=404,
-                error_message='Тест не найден',
-                error_description=f'Тест с темой "{topic_slug}" не найден. Проверьте правильность ссылки или обратитесь к учителю.'
-            ), 404
-        
-        print(f"[TEST_BY_LINK] Тест найден: template_id={template.template_id}, topic={template.topic}")
-        
-        # Сохраняем данные для использования после закрытия сессии
-        template_id = template.template_id
-        template_name = template.name
-        template_topic = template.topic
-        template_fields = template.fields or []
-        template_images = template.images or []
-        template_is_public = template.is_public
-        
-        # Пытаемся загрузить sheet_url из JSON файла, если он есть
-        template_sheet_url = None
-        template_path_check = os.path.join(Config.TEMPLATES_FOLDER, f"{template_id}.json")
-        if os.path.exists(template_path_check):
-            try:
-                with open(template_path_check, 'r', encoding='utf-8') as f:
-                    file_template_data = json.load(f)
-                    template_sheet_url = file_template_data.get('sheet_url')
-            except Exception:
-                pass  # Игнорируем ошибки чтения файла
-        
-        # Проверка публичности теста
-        if not template_is_public:
-            db.close()
-            return render_template('error.html',
-                error_code=403,
-                error_message='Доступ запрещен',
-                error_description='Этот тест недоступен для публичного доступа.'
-            ), 403
-        
-        # Увеличение счетчика прохождений
-        template.access_count = (template.access_count or 0) + 1
-        db.commit()
-        db.close()
-        
-        # Загрузка данных шаблона из файла (для совместимости)
-        template_path = os.path.join(Config.TEMPLATES_FOLDER, f"{template_id}.json")
-        if os.path.exists(template_path):
-            with open(template_path, 'r', encoding='utf-8') as f:
-                template_data = json.load(f)
-            # Убеждаемся, что используется 'files' для совместимости с фронтендом
-            if 'images' in template_data and 'files' not in template_data:
-                template_data['files'] = template_data['images']
-            print(f"[TEST_BY_LINK] Загружен sheet_url из файла: {template_data.get('sheet_url', 'не указан')}")
-        else:
-            # Если файла нет, создаем данные из БД (используем сохраненные значения)
-            # Преобразуем images в files для совместимости с фронтендом
-            files_list = template_images if isinstance(template_images, list) else (json.loads(template_images) if isinstance(template_images, str) else [])
-            template_data = {
-                'template_id': template_id,
-                'name': template_name,
-                'topic': template_topic,
-                'fields': template_fields if isinstance(template_fields, list) else (json.loads(template_fields) if isinstance(template_fields, str) else []),
-                'files': files_list,  # Используем 'files' для совместимости с фронтендом
-                'sheet_url': template_sheet_url  # Добавляем sheet_url из файла, если он был загружен
-            }
-        
-        # Если sheet_url не был загружен из файла, но был сохранен ранее, используем его
-        if not template_data.get('sheet_url') and template_sheet_url:
-            template_data['sheet_url'] = template_sheet_url
-        
-        # Передача данных в шаблон
-        return render_template('student.html', 
-            template_data=template_data,
-            template_id=template_id,
-            test_url=request.url
-        )
-    
-    except Exception as e:
-        print(f"Ошибка при загрузке теста: {e}")
-        import traceback
-        traceback.print_exc()
-        return render_template('error.html',
-            error_code=500,
-            error_message='Внутренняя ошибка сервера',
-            error_description='Произошла ошибка при загрузке теста. Попробуйте позже.'
-        ), 500
-
-
 @app.route('/student')
 def student():
-    """
-    Страница студента - список доступных тестов или конкретный тест.
-    """
-    # Проверка, передан ли template_id в параметрах
-    template_id = request.args.get('template_id')
-    if template_id:
-        # Загрузка конкретного теста по старому формату (для обратной совместимости)
-        template_path = os.path.join(Config.TEMPLATES_FOLDER, f"{template_id}.json")
-        if os.path.exists(template_path):
-            with open(template_path, 'r', encoding='utf-8') as f:
-                template_data = json.load(f)
-            return render_template('student.html', 
-                template_data=template_data,
-                template_id=template_id
-            )
-    
-    # Иначе показываем список доступных тестов
     return render_template('student.html')
+
+@app.route('/student/<city_code>/<school_code>')
+def student_by_school(city_code, school_code):
+    """Страница для учеников конкретной школы"""
+    return render_template('student.html', city_code=city_code, school_code=school_code)
+
+@app.route('/api/templates/by-school/<city_code>/<school_code>')
+def get_templates_by_school(city_code, school_code):
+    """Получение всех тестов школы"""
+    try:
+        templates = []
+        if os.path.exists(Config.TEMPLATES_FOLDER):
+            for filename in os.listdir(Config.TEMPLATES_FOLDER):
+                if filename.endswith('.json'):
+                    filepath = os.path.join(Config.TEMPLATES_FOLDER, filename)
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            
+                            # Фильтр по школе
+                            if (data.get('city_code') == city_code and 
+                                data.get('school_code') == school_code):
+                                templates.append({
+                                    'id': data.get('template_id', filename[:-5]),
+                                    'name': data.get('name', filename[:-5]),
+                                    'topic': data.get('topic'),
+                                    'subject_id': data.get('subject_id'),
+                                    'class_number': data.get('class_number'),
+                                    'classes': data.get('classes', [])
+                                })
+                    except Exception as e:
+                        print(f"Ошибка чтения шаблона {filename}: {e}")
+                        continue
+
+        return jsonify({'success': True, 'templates': templates})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/templates/filter')
+def filter_templates():
+    """Фильтрация тестов по классу, предмету и теме"""
+    try:
+        city_code = request.args.get('city_code')
+        school_code = request.args.get('school_code')
+        class_level = request.args.get('class_level', type=int)
+        subject_id = request.args.get('subject_id', type=int)
+        topic = request.args.get('topic')
+        
+        if not city_code or not school_code:
+            return jsonify({'success': False, 'error': 'Не указаны city_code и school_code'}), 400
+        
+        templates = []
+        if os.path.exists(Config.TEMPLATES_FOLDER):
+            for filename in os.listdir(Config.TEMPLATES_FOLDER):
+                if filename.endswith('.json'):
+                    filepath = os.path.join(Config.TEMPLATES_FOLDER, filename)
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            
+                            # Фильтр 1: Школа
+                            if (data.get('city_code') != city_code or 
+                                data.get('school_code') != school_code):
+                                continue
+                            
+                            # Фильтр 2: Класс
+                            if class_level is not None:
+                                classes = data.get('classes', [])
+                                class_number = data.get('class_number')
+                                
+                                # Проверяем class_number
+                                class_match = (class_number == class_level)
+                                
+                                # Проверяем classes (извлекаем числа из строк типа "10А")
+                                if not class_match:
+                                    for cls in classes:
+                                        if isinstance(cls, int) and cls == class_level:
+                                            class_match = True
+                                            break
+                                        elif isinstance(cls, str):
+                                            match = re.search(r'\d+', cls)
+                                            if match and int(match.group()) == class_level:
+                                                class_match = True
+                                                break
+                                
+                                if not class_match:
+                                    continue
+                            
+                            # Фильтр 3: Предмет
+                            if subject_id is not None:
+                                if data.get('subject_id') != subject_id:
+                                    continue
+                            
+                            # Фильтр 4: Тема (сравниваем по названию темы)
+                            if topic:
+                                template_topic = data.get('topic', '').strip()
+                                if template_topic.lower() != topic.lower():
+                                    continue
+                            
+                            templates.append({
+                                'id': data.get('template_id', filename[:-5]),
+                                'name': data.get('name', filename[:-5]),
+                                'topic': data.get('topic'),
+                                'subject_id': data.get('subject_id'),
+                                'class_number': data.get('class_number'),
+                                'classes': data.get('classes', [])
+                            })
+                    except Exception as e:
+                        print(f"Ошибка чтения шаблона {filename}: {e}")
+                        continue
+
+        return jsonify({'success': True, 'templates': templates})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/subjects')
+def get_subjects():
+    """Получение списка предметов"""
+    try:
+        db = SessionLocal()
+        class_level = request.args.get('class_level', type=int)
+        
+        query = db.query(Subject).filter(Subject.is_active == True)
+        
+        subjects_data = []
+        for subject in query.all():
+            # Получаем классы для предмета
+            classes = [sc.class_number for sc in subject.classes.all()]
+            
+            # Фильтр по классу если указан
+            if class_level is not None:
+                if class_level not in classes:
+                    continue
+            
+            subjects_data.append({
+                'id': subject.id,
+                'name': subject.name,
+                'name_slug': subject.name_slug,
+                'classes': sorted(classes)
+            })
+        
+        db.close()
+        
+        return jsonify({'success': True, 'subjects': subjects_data})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/classes/by-school/<city_code>/<school_code>')
+def get_classes_by_school(city_code, school_code):
+    """Получение уникальных классов из тестов школы"""
+    try:
+        classes_set = set()
+        
+        if os.path.exists(Config.TEMPLATES_FOLDER):
+            for filename in os.listdir(Config.TEMPLATES_FOLDER):
+                if filename.endswith('.json'):
+                    filepath = os.path.join(Config.TEMPLATES_FOLDER, filename)
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            
+                            # Фильтр по школе
+                            if (data.get('city_code') == city_code and 
+                                data.get('school_code') == school_code):
+                                
+                                # Добавляем классы из списка
+                                classes_list = data.get('classes', [])
+                                for cls in classes_list:
+                                    if isinstance(cls, int):
+                                        classes_set.add(cls)
+                                    elif isinstance(cls, str):
+                                        # Извлекаем число из строки типа "10А"
+                                        import re
+                                        match = re.search(r'\d+', cls)
+                                        if match:
+                                            classes_set.add(int(match.group()))
+                                
+                                # Добавляем class_number если есть
+                                class_number = data.get('class_number')
+                                if class_number:
+                                    classes_set.add(int(class_number))
+                    except Exception as e:
+                        print(f"Ошибка чтения шаблона {filename}: {e}")
+                        continue
+        
+        classes = sorted(list(classes_set))
+        return jsonify({'success': True, 'classes': classes})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/topics/by-school')
+def get_topics_by_school():
+    """Получение уникальных тем для школы, класса и предмета"""
+    try:
+        city_code = request.args.get('city_code')
+        school_code = request.args.get('school_code')
+        class_level = request.args.get('class_level', type=int)
+        subject_id = request.args.get('subject_id', type=int)
+        
+        if not city_code or not school_code:
+            return jsonify({'success': False, 'error': 'Не указаны city_code и school_code'}), 400
+        
+        topics_set = set()
+        
+        if os.path.exists(Config.TEMPLATES_FOLDER):
+            for filename in os.listdir(Config.TEMPLATES_FOLDER):
+                if filename.endswith('.json'):
+                    filepath = os.path.join(Config.TEMPLATES_FOLDER, filename)
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            
+                            # Фильтр 1: Школа
+                            if (data.get('city_code') != city_code or 
+                                data.get('school_code') != school_code):
+                                continue
+                            
+                            # Фильтр 2: Класс
+                            if class_level is not None:
+                                classes = data.get('classes', [])
+                                class_number = data.get('class_number')
+                                
+                                # Проверяем class_number
+                                class_match = (class_number == class_level)
+                                
+                                # Проверяем classes (извлекаем числа из строк типа "10А")
+                                if not class_match:
+                                    for cls in classes:
+                                        if isinstance(cls, int) and cls == class_level:
+                                            class_match = True
+                                            break
+                                        elif isinstance(cls, str):
+                                            match = re.search(r'\d+', cls)
+                                            if match and int(match.group()) == class_level:
+                                                class_match = True
+                                                break
+                                
+                                if not class_match:
+                                    continue
+                            
+                            # Фильтр 3: Предмет
+                            if subject_id is not None:
+                                if data.get('subject_id') != subject_id:
+                                    continue
+                            
+                            # Добавляем тему
+                            topic = data.get('topic')
+                            if topic:
+                                topics_set.add(topic)
+                    except Exception as e:
+                        print(f"Ошибка чтения шаблона {filename}: {e}")
+                        continue
+        
+        topics = sorted(list(topics_set))
+        return jsonify({'success': True, 'topics': topics})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ==========================
@@ -1759,58 +1595,27 @@ def load_template(template_id):
     Используется как редактором, так и студентом.
     """
     try:
-        # Очистка template_id от .json если есть
-        clean_template_id = template_id.replace('.json', '')
-        
-        # Сначала пытаемся загрузить из БД
-        db = SessionLocal()
-        template = db.query(Template).filter(Template.template_id == clean_template_id).first()
-        
-        if template:
-            # Загружаем из файла для совместимости
-            filepath = os.path.join(Config.TEMPLATES_FOLDER, f"{clean_template_id}.json")
-            if os.path.exists(filepath):
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    template_data = json.load(f)
-            else:
-                # Если файла нет, создаем из БД
-                template_data = {
-                    'template_id': template.template_id,
-                    'name': template.name,
-                    'topic': template.topic,
-                    'fields': template.fields or [],
-                    'files': template.images or []
-                }
-            
-            # Добавляем данные из БД
-            template_data['class_number'] = template.class_number
-            template_data['subject_id'] = template.subject_id
-            template_data['topic'] = template.topic
-            template_data['topic_slug'] = template.topic_slug
-            
-            db.close()
-            return jsonify(template_data)
-        
-        # Если не найдено в БД, загружаем из файла (для обратной совместимости)
+        # Определяем имя файла
         if template_id.endswith('.json'):
+            # Если передан полный filename
             safe_filename = secure_filename(template_id)
             filepath = os.path.join(Config.TEMPLATES_FOLDER, safe_filename)
         else:
-            filepath = os.path.join(Config.TEMPLATES_FOLDER, f"{clean_template_id}.json")
+            # Если передан template_id
+            filepath = os.path.join(Config.TEMPLATES_FOLDER, f"{template_id}.json")
 
-        if os.path.exists(filepath):
-            with open(filepath, 'r', encoding='utf-8') as f:
-                template_data = json.load(f)
-            db.close()
-            return jsonify(template_data)
-        
-        db.close()
-        return jsonify({'error': f'Шаблон не найден'}), 404
+        # Проверяем существование файла
+        if not os.path.exists(filepath):
+            return jsonify({'error': f'Шаблон не найден'}), 404
+
+        # Читаем и возвращаем содержимое
+        with open(filepath, 'r', encoding='utf-8') as f:
+            template_data = json.load(f)
+
+        return jsonify(template_data)
 
     except Exception as e:
         print(f"Ошибка при загрузке шаблона {template_id}: {e}")
-        import traceback
-        traceback.print_exc()
         return jsonify({'error': 'Внутренняя ошибка сервера при чтении шаблона'}), 500
 
 @app.route('/uploads/<filename>')
@@ -1826,270 +1631,144 @@ def uploaded_file(filename):
 @login_required
 def save_template():
     """
-    Сохранение шаблона в JSON файл и БД.
+    Сохранение шаблона в JSON файл.
     """
     try:
         data = request.get_json()
-        username = session.get('username') or session.get('login')
         
-        if not username:
-            return jsonify({'error': 'Пользователь не авторизован'}), 401
-        
-        # Валидация темы
-        topic = data.get('topic', '').strip()
-        if not topic:
-            return jsonify({'error': 'Тема теста обязательна для заполнения'}), 400
-        
-        try:
-            validate_topic(topic)
-        except ValidationError as e:
-            return jsonify({'error': str(e)}), 400
-        
-        # Валидация класса
-        class_number = data.get('class_number')
-        if not class_number:
-            return jsonify({'error': 'Класс обязателен для заполнения'}), 400
-        
-        try:
-            class_number = int(class_number)
-            if class_number < 1 or class_number > 11:
-                return jsonify({'error': 'Класс должен быть от 1 до 11'}), 400
-        except (ValueError, TypeError):
-            return jsonify({'error': 'Некорректный номер класса'}), 400
-        
-        # Валидация предмета
-        subject_id = data.get('subject_id')
-        if not subject_id:
-            return jsonify({'error': 'Предмет обязателен для заполнения'}), 400
-        
-        try:
-            subject_id = int(subject_id)
-        except (ValueError, TypeError):
-            return jsonify({'error': 'Некорректный ID предмета'}), 400
-        
+        # Получаем данные пользователя из БД
         db = SessionLocal()
+        user = db.query(User).filter(User.username == session.get('login')).first()
         
-        # Проверка существования предмета
-        subject = db.query(Subject).filter(
-            Subject.id == subject_id,
-            Subject.is_active == True
-        ).first()
-        
-        if not subject:
-            db.close()
-            return jsonify({'error': 'Предмет не найден или неактивен'}), 400
-        
-        # Генерация topic_slug
-        topic_slug = generate_topic_slug(topic)
-        
-        try:
-            validate_topic_slug(topic_slug)
-        except ValidationError as e:
-            db.close()
-            return jsonify({'error': f'Ошибка генерации slug: {str(e)}'}), 400
-        
-        # Генерация ID если не указан
-        if 'template_id' not in data or not data['template_id']:
-            data['template_id'] = f"tpl_{uuid.uuid4().hex[:8]}"
-        
-        # Проверка уникальности темы для данного учителя и предмета
-        existing_template = db.query(Template).filter(
-            Template.created_by_username == username,
-            Template.subject_id == subject_id,
-            Template.topic_slug == topic_slug
-        ).first()
-        
-        if existing_template and str(existing_template.template_id) != data['template_id']:
-            db.close()
-            return jsonify({
-                'error': f'Тест с темой "{topic}" по предмету "{subject.name}" для {class_number} класса уже существует. Выберите другое название темы.'
-            }), 400
-        
-        # Проверка лимита на количество тестов
-        user = auth_manager.get_user_by_username(username)
-        if user and user.max_tests_limit:
-            current_tests_count = db.query(Template).filter(
-                Template.created_by_username == username
-            ).count()
-            
-            if current_tests_count >= user.max_tests_limit:
-                db.close()
-                return jsonify({
-                    'error': f'Достигнут лимит на количество тестов ({user.max_tests_limit})'
-                }), 400
-        
-        # Получение данных учителя для формирования ссылки
         if not user:
-            user = auth_manager.get_user_by_username(username)
-        
-        if not user or not user.city_code or not user.school_code:
             db.close()
-            return jsonify({'error': 'У учителя не указаны город и школа. Обратитесь к администратору.'}), 400
+            return jsonify({'error': 'Пользователь не найден'}), 404
         
-        # Добавление полей в данные шаблона
-        data['topic'] = topic
-        data['topic_slug'] = topic_slug
-        data['created_by_username'] = username
-        data['class_number'] = class_number
-        data['subject_id'] = subject_id
+        # Автоматически добавляем city_code и school_code из данных пользователя
+        data['city_code'] = user.city_code
+        data['school_code'] = user.school_code
+        data['created_by_username'] = user.username
         
-        # Убеждаемся, что директория существует и имеет правильные права
-        templates_folder = Config.TEMPLATES_FOLDER
-        if not os.path.exists(templates_folder):
-            os.makedirs(templates_folder, mode=0o755, exist_ok=True)
-        elif not os.access(templates_folder, os.W_OK):
-            # Если директория существует, но нет прав на запись, пытаемся изменить права
-            try:
-                os.chmod(templates_folder, 0o755)
-            except Exception as perm_error:
-                print(f"Не удалось изменить права доступа к {templates_folder}: {perm_error}")
-                return jsonify({
-                    'error': f'Нет прав на запись в директорию templates_json. Обратитесь к администратору.'
-                }), 500
+        # Получаем topic и subject_id из данных (если переданы)
+        topic = data.get('topic', '').strip()
+        subject_id = data.get('subject_id')
+        class_number = data.get('class_number')
+        classes = data.get('classes', [])
         
-        # Формирование имени файла
-        filename = f"{data['template_id']}.json"
-        filepath = os.path.join(templates_folder, filename)
+        # Если class_number не указан, но есть classes, берем первый числовой класс
+        if not class_number and classes:
+            # Пытаемся извлечь число из первого класса (например, "10А" -> 10)
+            first_class = classes[0]
+            if isinstance(first_class, str):
+                match = re.search(r'\d+', first_class)
+                if match:
+                    class_number = int(match.group())
+            elif isinstance(first_class, int):
+                class_number = first_class
         
-        # Убеждаемся, что sheet_url сохраняется в данных
-        if 'sheet_url' not in data:
-            print(f"[SAVE_TEMPLATE] Предупреждение: sheet_url не найден в данных шаблона")
-        
-        # Сохранение в файл
-        try:
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            print(f"[SAVE_TEMPLATE] Шаблон сохранен в файл: {filepath}, sheet_url: {data.get('sheet_url', 'не указан')}")
-            # Устанавливаем права на файл после создания
-            os.chmod(filepath, 0o644)
-        except PermissionError as perm_err:
-            print(f"Ошибка прав доступа при сохранении файла {filepath}: {perm_err}")
-            return jsonify({
-                'error': f'Нет прав на запись файла. Обратитесь к администратору. Путь: {templates_folder}'
-            }), 500
-        
-        # Сохранение/обновление в БД
-        template = db.query(Template).filter(
-            Template.template_id == data['template_id']
-        ).first()
-        
-        if template:
-            # Обновление существующего шаблона
-            print(f"[SAVE_TEMPLATE] Обновление существующего шаблона template_id={data['template_id']}")
-            template.name = data.get('name', template.name)
-            template.topic = topic
-            template.topic_slug = topic_slug
-            template.created_by_username = username
-            template.class_number = class_number
-            template.subject_id = subject_id
-            template.fields = data.get('fields', template.fields)
-            template.images = data.get('files', template.images)
-            template.is_active = data.get('is_active', True)
-            template.is_public = data.get('is_public', True)
-            template.updated_at = datetime.utcnow()
+        # Валидация topic если указан
+        if topic:
+            validate_topic(topic)
+            topic_slug = generate_topic_slug(topic)
+            data['topic'] = topic
+            data['topic_slug'] = topic_slug
         else:
-            # Создание нового шаблона
-            print(f"[SAVE_TEMPLATE] Создание нового шаблона template_id={data['template_id']}")
-            template = Template(
-                template_id=data['template_id'],
-                name=data.get('name', 'Без названия'),
-                description=data.get('description'),
-                fields=data.get('fields', []),
-                images=data.get('files', []),
-                created_by=user.id if user else None,
-                topic=topic,
-                topic_slug=topic_slug,
-                created_by_username=username,
-                class_number=class_number,
-                subject_id=subject_id,
-                is_active=data.get('is_active', True),
-                is_public=data.get('is_public', True)
-            )
-            db.add(template)
+            topic_slug = None
         
-        try:
-            db.commit()
-        except Exception as commit_error:
-            db.rollback()
-            # Если ошибка уникальности при коммите, значит шаблон уже существует - обновляем его
-            error_str = str(commit_error).lower()
-            if 'uniqueviolation' in error_str or 'duplicate key' in error_str or 'ix_templates_template_id' in error_str:
-                print(f"[SAVE_TEMPLATE] Ошибка уникальности при коммите, обновляем существующий шаблон template_id={data['template_id']}")
-                # Повторно запрашиваем шаблон
-                template = db.query(Template).filter(
+        # Сохранение в БД (если нужно)
+        template_db = None
+        if subject_id or topic or class_number:
+            try:
+                # Генерируем template_id если его еще нет
+                if 'template_id' not in data or not data['template_id']:
+                    data['template_id'] = f"tpl_{uuid.uuid4().hex[:8]}"
+                
+                # Проверяем, существует ли уже шаблон в БД
+                template_db = db.query(Template).filter(
                     Template.template_id == data['template_id']
                 ).first()
-                if template:
-                    # Обновление существующего шаблона
-                    template.name = data.get('name', template.name)
-                    template.topic = topic
-                    template.topic_slug = topic_slug
-                    template.created_by_username = username
-                    template.class_number = class_number
-                    template.subject_id = subject_id
-                    template.fields = data.get('fields', template.fields)
-                    template.images = data.get('files', template.images)
-                    template.is_active = data.get('is_active', True)
-                    template.is_public = data.get('is_public', True)
-                    template.updated_at = datetime.utcnow()
-                    db.commit()
+                
+                if template_db:
+                    # Обновляем существующий
+                    if topic:
+                        template_db.topic = topic
+                        template_db.topic_slug = topic_slug
+                    if subject_id:
+                        template_db.subject_id = subject_id
+                    if class_number:
+                        template_db.class_number = class_number
+                    template_db.updated_at = datetime.utcnow()
                 else:
-                    db.close()
-                    return jsonify({
-                        'error': f'Шаблон с ID {data["template_id"]} уже существует, но не найден для обновления. Попробуйте перезагрузить страницу.'
-                    }), 500
-            else:
-                # Другая ошибка - пробрасываем дальше
+                    # Создаем новый
+                    template_db = Template(
+                        template_id=data['template_id'],
+                        name=data.get('name', ''),
+                        description=data.get('description'),
+                        fields=data.get('fields', []),
+                        images=data.get('images'),
+                        created_by=user.id,
+                        created_by_username=user.username,
+                        topic=topic,
+                        topic_slug=topic_slug,
+                        subject_id=subject_id,
+                        class_number=class_number,
+                        is_public=True
+                    )
+                    db.add(template_db)
+                
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                print(f"Ошибка при сохранении в БД: {e}")
+            finally:
                 db.close()
-                raise
         
-        # Сохраняем данные для логирования и ответа до закрытия сессии
-        template_id_for_log = template.id if template.id else None
-        is_update = template.id is not None
-        subject_name = subject.name
-        subject_name_slug = subject.name_slug
-        user_city_code = user.city_code if user else None
-        user_school_code = user.school_code if user else None
+        # Генерация ID если не указан (если еще не сгенерирован выше)
+        if 'template_id' not in data or not data['template_id']:
+            data['template_id'] = f"tpl_{uuid.uuid4().hex[:8]}"
+
+        # Формирование имени файла
+        filename = f"{data['template_id']}.json"
+        filepath = os.path.join(Config.TEMPLATES_FOLDER, filename)
+
+        # Сохранение в JSON файл
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
         
-        db.close()
-        
-        # Логирование создания теста (после закрытия сессии)
-        log_audit_action(
-            action='update_test' if is_update else 'create_test',
-            target_type='test',
-            target_id=template_id_for_log,
-            details={
-                'template_id': data['template_id'],
-                'topic': topic,
-                'topic_slug': topic_slug,
-                'class_number': class_number,
-                'subject_id': subject_id
-            }
-        )
-        
-        # Формирование ссылки в новом формате
+        # Формирование ссылки на тест
         base_url = request.host_url.rstrip('/')
-        # Заменяем http://localhost:5000 на https://docquiz.predmet.kz если нужно
+        # Заменяем localhost на production URL если нужно
         if 'localhost' in base_url or '127.0.0.1' in base_url:
             base_url = 'https://docquiz.predmet.kz'
         
-        if user_city_code and user_school_code and subject_name_slug:
-            test_url = f"{base_url}/test/{user_city_code}/{user_school_code}/{subject_name_slug}/{topic_slug}"
-        else:
-            test_url = f"{base_url}/test/{data['template_id']}"
+        test_url = f"{base_url}/student/{user.city_code}/{user.school_code}"
         
+        # Логирование (если есть user_id)
+        if session.get('user_id'):
+            try:
+                log_audit_action(
+                    action='create_test' if not template_db else 'update_test',
+                    target_type='test',
+                    target_id=template_db.id if template_db else None,
+                    details={
+                        'template_id': data['template_id'],
+                        'topic': topic,
+                        'subject_id': subject_id,
+                        'class_number': class_number
+                    }
+                )
+            except:
+                pass  # Игнорируем ошибки логирования
+
         return jsonify({
             'success': True,
             'template_id': data['template_id'],
-            'topic': topic,
-            'topic_slug': topic_slug,
-            'class_number': class_number,
-            'subject_id': subject_id,
-            'subject_name': subject_name,
             'test_url': test_url,
+            'city_code': user.city_code,
+            'school_code': user.school_code,
             'message': 'Шаблон успешно сохранен'
         })
-    
+
     except ValidationError as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:
@@ -2178,37 +1857,14 @@ def check_answers():
         student_info = data.get('student_info', {})
         sheet_url = data.get('sheet_url')
 
-        if not template_id:
-            return jsonify({"success": False, "error": "Не указан template_id"}), 400
-
-        # Загружаем шаблон (сначала из файла, потом из БД)
+        # Загружаем шаблон
         template_path = os.path.join(Config.TEMPLATES_FOLDER, f"{template_id}.json")
-        template = None
-        
-        if os.path.exists(template_path):
-            # Загружаем из файла
-            with open(template_path, 'r', encoding='utf-8') as f:
-                template = json.load(f)
-        else:
-            # Если файла нет, загружаем из БД
-            db = SessionLocal()
-            db_template = db.query(Template).filter(Template.template_id == template_id).first()
-            if db_template:
-                # Преобразуем данные из БД в формат шаблона
-                template_fields = db_template.fields if isinstance(db_template.fields, list) else (json.loads(db_template.fields) if isinstance(db_template.fields, str) else [])
-                template_images = db_template.images if isinstance(db_template.images, list) else (json.loads(db_template.images) if isinstance(db_template.images, str) else [])
-                template = {
-                    'template_id': db_template.template_id,
-                    'name': db_template.name,
-                    'topic': db_template.topic,
-                    'fields': template_fields,
-                    'files': template_images,  # Используем 'files' для совместимости
-                    'images': template_images  # Также сохраняем 'images' для обратной совместимости
-                }
-            db.close()
-        
-        if not template:
+        if not os.path.exists(template_path):
             return jsonify({"success": False, "error": "Шаблон не найден"}), 404
+
+        # КРИТИЧНО: Явно указываем кодировку UTF-8 при чтении
+        with open(template_path, 'r', encoding='utf-8') as f:
+            template = json.load(f)
 
         template_name = template.get("name", template_id)
         fields = template.get('fields', [])
@@ -2338,31 +1994,10 @@ def check_answers():
                         }
 
                         log_file_path = os.path.join(Config.BASE_DIR, AIConfig.AI_LOG_FILE)
-                        log_dir = os.path.dirname(log_file_path)
-                        
-                        # Создаем директорию с правильными правами
-                        if not os.path.exists(log_dir):
-                            os.makedirs(log_dir, mode=0o755, exist_ok=True)
-                        elif not os.access(log_dir, os.W_OK):
-                            # Если директория существует, но нет прав на запись, пытаемся изменить права
-                            try:
-                                os.chmod(log_dir, 0o755)
-                            except Exception as perm_error:
-                                print(f"Не удалось изменить права доступа к {log_dir}: {perm_error}")
+                        os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
 
-                        # Записываем в файл с обработкой ошибок прав доступа
-                        try:
-                            with open(log_file_path, 'a', encoding='utf-8') as log_f:
-                                log_f.write(json.dumps(log_entry, ensure_ascii=False, indent=None) + '\n')
-                            # Устанавливаем права на файл после создания/записи
-                            if os.path.exists(log_file_path):
-                                try:
-                                    os.chmod(log_file_path, 0o644)
-                                except Exception:
-                                    pass  # Игнорируем ошибки установки прав на файл
-                        except PermissionError as perm_err:
-                            print(f"Ошибка прав доступа при записи в лог-файл {log_file_path}: {perm_err}")
-                            # Не прерываем выполнение, просто не логируем
+                        with open(log_file_path, 'a', encoding='utf-8') as log_f:
+                            log_f.write(json.dumps(log_entry, ensure_ascii=False, indent=None) + '\n')
 
                 except Exception as ai_err:
                     ai_error = str(ai_err)
@@ -2443,9 +2078,7 @@ def check_answers():
 
         # Запись в Google Sheets
         sheets_result = None
-        print(f"[CHECK_ANSWERS] sheet_url получен: {sheet_url}")
         if sheet_url:
-            print(f"[CHECK_ANSWERS] Начинаем сохранение в Google Sheets...")
             try:
                 creds_path = os.path.join(Config.CREDENTIALS_FOLDER, 'credentials.json')
                 if not os.path.exists(creds_path):
@@ -2514,13 +2147,9 @@ def check_answers():
                 }
 
             except Exception as e:
-                error_msg = str(e)
-                print(f"[CHECK_ANSWERS] Ошибка сохранения в Google Sheets: {error_msg}")
-                import traceback
-                traceback.print_exc()
                 sheets_result = {
                     "success": False, 
-                    "error": f"Ошибка Google Sheets: {error_msg}"
+                    "error": f"Ошибка Google Sheets: {str(e)}"
                 }
 
         # КРИТИЧНО: Формируем JSON ответ с ensure_ascii=False для правильной кодировки
@@ -2612,38 +2241,6 @@ def clear_ai_cache():
     
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
-
-
-# ==========================
-# ОБРАБОТЧИКИ ОШИБОК
-# ==========================
-
-@app.errorhandler(404)
-def not_found_error(error):
-    """Обработчик ошибки 404"""
-    return render_template('error.html',
-        error_code=404,
-        error_message='Страница не найдена',
-        error_description='Запрашиваемая страница не существует.'
-    ), 404
-
-@app.errorhandler(403)
-def forbidden_error(error):
-    """Обработчик ошибки 403"""
-    return render_template('error.html',
-        error_code=403,
-        error_message='Доступ запрещен',
-        error_description='У вас нет прав для доступа к этой странице.'
-    ), 403
-
-@app.errorhandler(500)
-def internal_error(error):
-    """Обработчик ошибки 500"""
-    return render_template('error.html',
-        error_code=500,
-        error_message='Внутренняя ошибка сервера',
-        error_description='Произошла непредвиденная ошибка. Попробуйте позже.'
-    ), 500
 
 
 if __name__ == '__main__':

@@ -78,7 +78,6 @@ def generate_topic_slug(topic: str) -> str:
 def generate_username(city_code: str, school_code: str) -> str:
     """
     Generate username from city and school codes.
-    DEPRECATED: Используйте generate_username_from_name() для новых учителей.
     
     Args:
         city_code: City code (e.g., "ast")
@@ -97,51 +96,6 @@ def generate_username(city_code: str, school_code: str) -> str:
     
     # Объединение
     username = city_code + school_code
-    
-    return username
-
-
-def generate_username_from_name(last_name: str, first_name: str, existing_usernames: Optional[list] = None) -> str:
-    """
-    Generate username from teacher's name (lastname.firstname format).
-    
-    Args:
-        last_name: Teacher's last name
-        first_name: Teacher's first name
-        existing_usernames: List of existing usernames to avoid duplicates (optional)
-        
-    Returns:
-        Username in format "lastname.firstname" or "lastname.firstname.2" if duplicate
-    """
-    # Транслитерация
-    last_name_lat = transliterate(last_name.strip())
-    first_name_lat = transliterate(first_name.strip())
-    
-    # Приведение к lowercase
-    last_name_lat = last_name_lat.lower()
-    first_name_lat = first_name_lat.lower()
-    
-    # Удаление недопустимых символов (оставляем только буквы, цифры, точки, дефисы, подчеркивания)
-    last_name_lat = re.sub(r'[^a-z0-9._-]', '', last_name_lat)
-    first_name_lat = re.sub(r'[^a-z0-9._-]', '', first_name_lat)
-    
-    # Удаление точек и дефисов в начале/конце
-    last_name_lat = last_name_lat.strip('._-')
-    first_name_lat = first_name_lat.strip('._-')
-    
-    # Базовая генерация логина
-    base_username = f"{last_name_lat}.{first_name_lat}"
-    
-    # Если список существующих логинов не передан, возвращаем базовый
-    if existing_usernames is None:
-        return base_username
-    
-    # Проверка уникальности и добавление номера при необходимости
-    username = base_username
-    counter = 1
-    while username in existing_usernames:
-        counter += 1
-        username = f"{base_username}.{counter}"
     
     return username
 
