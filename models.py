@@ -129,7 +129,7 @@ class SubjectClass(Base):
     __tablename__ = 'subject_classes'
     
     id = Column(Integer, primary_key=True, index=True)
-    subject_id = Column(Integer, nullable=False, index=True)
+    subject_id = Column(Integer, ForeignKey('subjects.id', ondelete='CASCADE'), nullable=False, index=True)
     class_number = Column(Integer, nullable=False)  # Класс от 1 до 11
     
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -141,7 +141,7 @@ class SubjectClass(Base):
 
 
 # Установка relationship после определения SubjectClass
-Subject.classes = relationship('SubjectClass', backref='subject', lazy='dynamic', cascade='all, delete-orphan')
+Subject.classes = relationship('SubjectClass', backref='subject', lazy='dynamic', cascade='all, delete-orphan', foreign_keys='SubjectClass.subject_id')
 
 
 class StudentResult(Base):
