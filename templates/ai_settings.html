@@ -515,8 +515,12 @@
 
         <!-- Навигация -->
         <div class="nav-buttons">
-            <button class="nav-btn" onclick="window.location.href='/'">📝 Редактор</button>
+            <button class="nav-btn" onclick="window.location.href='/editor'">📝 Редактор</button>
+            {% if city_code and school_code %}
+            <button class="nav-btn" onclick="window.location.href='/student/{{ city_code }}/{{ school_code }}'">👨‍🎓 Студент</button>
+            {% else %}
             <button class="nav-btn" onclick="window.location.href='/student'">👨‍🎓 Студент</button>
+            {% endif %}
             <button class="nav-btn active">⚙️ Настройки AI</button>
             <button class="nav-btn" onclick="window.location.href='/logout'">🚪 Выход</button>
         </div>

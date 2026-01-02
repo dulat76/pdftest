@@ -155,7 +155,22 @@ def save_to_google_sheets(sheet_url, student_data):
 @login_required
 def ai_settings_page():
     """Страница настроек AI"""
-    return render_template('ai_settings.html', login=session.get('login'))
+    # Получаем данные пользователя для формирования ссылки на студента
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.username == session.get('login')).first()
+        city_code = user.city_code if user else None
+        school_code = user.school_code if user else None
+    except:
+        city_code = None
+        school_code = None
+    finally:
+        db.close()
+    
+    return render_template('ai_settings.html', 
+                         login=session.get('login'),
+                         city_code=city_code,
+                         school_code=school_code)
 
 
 @app.route('/api/ai/settings', methods=['GET', 'POST'])
