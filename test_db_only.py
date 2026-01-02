@@ -2,21 +2,43 @@
 import sys
 import os
 
-# Загружаем переменные окружения
-from dotenv import load_dotenv
-load_dotenv()
+# Добавляем путь к проекту
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Пытаемся загрузить из models.py (там уже есть dotenv)
+try:
+    from models import engine, SessionLocal
+    DATABASE_URL = str(engine.url)
+    print("✅ Используем DATABASE_URL из models.py")
+except:
+    # Если не получилось, используем прямое подключение
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+        DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://flask_user:flask_password123@localhost:5433/flask_db')
+    except:
+        DATABASE_URL = 'postgresql://flask_user:flask_password123@localhost:5433/flask_db'
 
 # Импортируем только SQLAlchemy напрямую
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://flask_user:flask_password123@localhost:5433/flask_db')
+# Если не получили из models, создаем engine заново
+try:
+    if 'engine' not in locals():
+        engine = create_engine(DATABASE_URL)
+        SessionLocal = sessionmaker(bind=engine)
+except:
+    engine = create_engine(DATABASE_URL)
+    SessionLocal = sessionmaker(bind=engine)
 
 print(f"🔍 Тест подключения к БД: {DATABASE_URL.replace('flask_password123', '***')}\n")
 
 try:
-    engine = create_engine(DATABASE_URL)
-    SessionLocal = sessionmaker(bind=engine)
+    # Используем уже созданные engine и SessionLocal, или создаем новые
+    if 'engine' not in locals() or 'SessionLocal' not in locals():
+        engine = create_engine(DATABASE_URL)
+        SessionLocal = sessionmaker(bind=engine)
     
     db = SessionLocal()
     

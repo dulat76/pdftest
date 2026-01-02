@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 import sys
 import os
-from werkzeug.security import check_password_hash
 
 # Добавляем путь к проекту
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Пытаемся импортировать werkzeug
+try:
+    from werkzeug.security import check_password_hash
+except ImportError:
+    print("⚠️  werkzeug не найден, проверка паролей будет пропущена")
+    def check_password_hash(pwhash, password):
+        return False
 
 print("🔍 Диагностика проблемы аутентификации...\n")
 
