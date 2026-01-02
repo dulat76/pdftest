@@ -751,7 +751,6 @@ def update_teacher(teacher_id):
                 User.id != teacher_id
             ).first()
             if existing_email:
-                db.close()
                 return jsonify({
                     'success': False,
                     'error': f'Пользователь с email "{data["email"]}" уже существует'
@@ -770,7 +769,6 @@ def update_teacher(teacher_id):
                 try:
                     teacher.expiration_date = datetime.strptime(data['expiration_date'], '%Y-%m-%d').date()
                 except ValueError:
-                    db.close()
                     return jsonify({
                         'success': False,
                         'error': 'Некорректный формат даты (используйте YYYY-MM-DD)'
