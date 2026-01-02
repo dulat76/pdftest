@@ -100,6 +100,44 @@ def generate_username(city_code: str, school_code: str) -> str:
     return username
 
 
+def generate_username_from_name(last_name: str, first_name: str) -> str:
+    """
+    Generate username from last name and first name in format: lastname.firstname
+    
+    Args:
+        last_name: Last name (can be in Cyrillic)
+        first_name: First name (can be in Cyrillic)
+        
+    Returns:
+        Username in format: lastname.firstname (transliterated, lowercase)
+    
+    Example:
+        "Иванов", "Иван" -> "ivanov.ivan"
+    """
+    # Транслитерация
+    last_name_lat = transliterate(last_name.strip())
+    first_name_lat = transliterate(first_name.strip())
+    
+    # Приведение к lowercase
+    last_name_lat = last_name_lat.lower()
+    first_name_lat = first_name_lat.lower()
+    
+    # Удаление недопустимых символов (оставляем только буквы, цифры, точки, дефисы)
+    last_name_lat = re.sub(r'[^a-z0-9.-]', '', last_name_lat)
+    first_name_lat = re.sub(r'[^a-z0-9.-]', '', first_name_lat)
+    
+    # Объединение через точку
+    username = f"{last_name_lat}.{first_name_lat}"
+    
+    # Удаление множественных точек
+    username = re.sub(r'\.+', '.', username)
+    
+    # Удаление точек в начале и конце
+    username = username.strip('.')
+    
+    return username
+
+
 def generate_random_password(length: int = 12) -> str:
     """
     Generate a random password.

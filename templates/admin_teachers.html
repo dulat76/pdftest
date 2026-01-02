@@ -217,6 +217,14 @@
                         <input type="email" id="email" required>
                     </div>
                     
+                    <div class="form-group">
+                        <label>Логин *</label>
+                        <input type="text" id="username" required pattern="[a-z0-9.]+" title="Только латинские буквы, цифры и точка" oninput="this.value = this.value.toLowerCase()">
+                        <p style="font-size: 12px; color: #666; margin-top: 5px;">
+                            Автогенерация: <button type="button" onclick="generateUsernameFromName()" style="background: #95a5a6; color: white; padding: 5px 10px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Сгенерировать из имени</button>
+                        </p>
+                    </div>
+                    
                     <div class="form-row">
                         <div class="form-group">
                             <label>Город *</label>
@@ -225,7 +233,7 @@
                         </div>
                         <div class="form-group">
                             <label>Код города *</label>
-                            <input type="text" id="cityCode" required oninput="updateUsernamePreview()" pattern="[a-z0-9]{2,20}" title="Только латинские буквы и цифры, 2-20 символов">
+                            <input type="text" id="cityCode" required pattern="[a-z0-9]{2,20}" title="Только латинские буквы и цифры, 2-20 символов">
                         </div>
                     </div>
                     
@@ -237,12 +245,8 @@
                         </div>
                         <div class="form-group">
                             <label>Код школы *</label>
-                            <input type="text" id="schoolCode" required oninput="updateUsernamePreview()" pattern="[a-z0-9]{2,50}" title="Только латинские буквы и цифры, 2-50 символов">
+                            <input type="text" id="schoolCode" required pattern="[a-z0-9]{2,50}" title="Только латинские буквы и цифры, 2-50 символов">
                         </div>
-                    </div>
-                    
-                    <div id="usernamePreview" class="username-preview" style="display: none;">
-                        Логин: <strong id="previewUsername"></strong>
                     </div>
                     
                     <div class="form-group">
@@ -336,16 +340,31 @@
             errorDiv.style.display = 'block';
         }
         
-        function updateUsernamePreview() {
-            const cityCode = document.getElementById('cityCode').value.toLowerCase().trim();
-            const schoolCode = document.getElementById('schoolCode').value.toLowerCase().trim();
+        function generateUsernameFromName() {
+            const lastName = document.getElementById('lastName').value.trim();
+            const firstName = document.getElementById('firstName').value.trim();
             
-            if (cityCode && schoolCode) {
-                const username = cityCode + schoolCode;
-                document.getElementById('previewUsername').textContent = username;
-                document.getElementById('usernamePreview').style.display = 'block';
+            if (lastName && firstName) {
+                // Простая транслитерация (можно улучшить)
+                const translit = {
+                    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+                    'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+                    'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+                    'ф': 'f', 'х': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch',
+                    'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
+                };
+                
+                function transliterate(text) {
+                    return text.toLowerCase().split('').map(char => translit[char] || char).join('').replace(/[^a-z0-9]/g, '');
+                }
+                
+                const lastLat = transliterate(lastName);
+                const firstLat = transliterate(firstName);
+                const username = lastLat + '.' + firstLat;
+                
+                document.getElementById('username').value = username;
             } else {
-                document.getElementById('usernamePreview').style.display = 'none';
+                alert('Сначала введите фамилию и имя');
             }
         }
         
@@ -371,7 +390,7 @@
             document.getElementById('modalTitle').textContent = 'Добавить учителя';
             document.getElementById('teacherForm').reset();
             document.getElementById('teacherId').value = '';
-            document.getElementById('usernamePreview').style.display = 'none';
+            document.getElementById('username').value = '';
             document.getElementById('teacherModal').style.display = 'block';
             loadCities();
             loadSchools();
@@ -390,6 +409,7 @@
             document.getElementById('cityCode').value = teacher.city_code || '';
             document.getElementById('school').value = teacher.school || '';
             document.getElementById('schoolCode').value = teacher.school_code || '';
+            document.getElementById('username').value = teacher.username || '';
             loadCities();
             if (teacher.city) {
                 loadSchools(teacher.city);
@@ -400,7 +420,6 @@
             document.getElementById('maxTestsLimit').value = teacher.max_tests_limit || '';
             document.getElementById('password').value = '';
             document.getElementById('password').required = false;
-            updateUsernamePreview();
             document.getElementById('teacherModal').style.display = 'block';
         }
         
@@ -416,6 +435,7 @@
                 first_name: document.getElementById('firstName').value.trim(),
                 last_name: document.getElementById('lastName').value.trim(),
                 email: document.getElementById('email').value.trim(),
+                username: document.getElementById('username').value.trim(),
                 city: document.getElementById('city').value.trim(),
                 city_code: document.getElementById('cityCode').value.trim().toLowerCase(),
                 school: document.getElementById('school').value.trim(),

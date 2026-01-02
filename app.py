@@ -12,7 +12,7 @@ from config import Config
 from auth_utils import auth_manager, login_required, superuser_required
 from models import SessionLocal, User, Template, AuditLog, Subject, SubjectClass
 from validators import ValidationError, validate_teacher_data, validate_topic, validate_topic_slug, validate_subject_classes
-from utils import generate_username, generate_topic_slug, generate_random_password
+from utils import generate_username, generate_topic_slug, generate_random_password, generate_username_from_name, sanitize_username
 from ai_checker import AIAnswerChecker
 from dataclasses import asdict
 from flask import send_from_directory
@@ -769,25 +769,34 @@ def update_teacher(teacher_id):
         teacher.updated_at = datetime.utcnow()
         
         db.commit()
-        db.close()
         
-        log_audit_action(
-            action='update_teacher',
-            target_type='teacher',
-            target_id=teacher_id,
-            details=data
-        )
+        # Логирование (после commit, но до close)
+        try:
+            log_audit_action(
+                action='update_teacher',
+                target_type='teacher',
+                target_id=teacher_id,
+                details=data
+            )
+        except Exception as log_error:
+            print(f"Ошибка логирования: {log_error}")
         
         return jsonify({'success': True, 'message': 'Данные учителя обновлены'})
     
     except Exception as e:
+        if db:
+            db.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if db:
+            db.close()
 
 
 @app.route('/api/admin/teachers/<int:teacher_id>', methods=['DELETE'])
 @superuser_required
 def delete_teacher(teacher_id):
     """Удаление учителя (мягкое удаление через is_active=False)"""
+    db = None
     try:
         db = SessionLocal()
         
@@ -797,28 +806,37 @@ def delete_teacher(teacher_id):
         ).first()
         
         if not teacher:
-            db.close()
             return jsonify({'success': False, 'error': 'Учитель не найден'}), 404
+        
+        # Сохраняем username до закрытия сессии
+        username = teacher.username
         
         # Мягкое удаление
         teacher.is_active = False
         teacher.updated_at = datetime.utcnow()
         
         db.commit()
-        db.close()
         
-        # Логирование
-        log_audit_action(
-            action='delete_teacher',
-            target_type='teacher',
-            target_id=teacher_id,
-            details={'username': teacher.username}
-        )
+        # Логирование (после commit, но до close)
+        try:
+            log_audit_action(
+                action='delete_teacher',
+                target_type='teacher',
+                target_id=teacher_id,
+                details={'username': username}
+            )
+        except Exception as log_error:
+            print(f"Ошибка логирования: {log_error}")
         
         return jsonify({'success': True, 'message': 'Учитель деактивирован'})
     
     except Exception as e:
+        if db:
+            db.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if db:
+            db.close()
 
 
 @app.route('/api/admin/teachers/<int:teacher_id>/reset-password', methods=['POST'])
