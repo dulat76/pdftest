@@ -710,6 +710,7 @@ def get_teacher(teacher_id):
 @superuser_required
 def update_teacher(teacher_id):
     """Обновление данных учителя"""
+    db = None
     try:
         data = request.get_json()
         db = SessionLocal()
