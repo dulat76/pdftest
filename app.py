@@ -1819,12 +1819,15 @@ def save_template():
             json.dump(data, f, ensure_ascii=False, indent=2)
         
         # Формирование ссылки на тест
-        base_url = request.host_url.rstrip('/')
-        # Заменяем localhost на production URL если нужно
-        if 'localhost' in base_url or '127.0.0.1' in base_url:
-            base_url = 'https://docquiz.predmet.kz'
+        # Всегда используем production URL
+        base_url = 'https://docquiz.predmet.kz'
         
-        test_url = f"{base_url}/student/{user_city_code}/{user_school_code}"
+        # Проверяем, что city_code и school_code есть
+        if user_city_code and user_school_code:
+            test_url = f"{base_url}/student/{user_city_code}/{user_school_code}"
+        else:
+            # Если нет кодов, используем username или показываем ошибку
+            test_url = None
         
         # Логирование (если есть user_id)
         if session.get('user_id'):
@@ -1843,14 +1846,21 @@ def save_template():
             except:
                 pass  # Игнорируем ошибки логирования
 
-        return jsonify({
+        response_data = {
             'success': True,
             'template_id': data['template_id'],
-            'test_url': test_url,
-            'city_code': user_city_code,
-            'school_code': user_school_code,
             'message': 'Шаблон успешно сохранен'
-        })
+        }
+        
+        # Добавляем ссылку только если она сформирована
+        if test_url:
+            response_data['test_url'] = test_url
+            response_data['city_code'] = user_city_code
+            response_data['school_code'] = user_school_code
+        else:
+            response_data['warning'] = 'Не указаны код города или школы. Ссылка на тест не может быть сформирована.'
+        
+        return jsonify(response_data)
 
     except ValidationError as e:
         return jsonify({'error': str(e)}), 400

@@ -564,8 +564,10 @@ async function saveTemplate() {
             // Показываем ссылку на тест
             if (result.test_url) {
                 showTestLink(result.test_url);
+                showModal('Шаблон сохранен успешно!\n\nСсылка на тест отображается ниже.');
+            } else {
+                showModal('Шаблон сохранен успешно!\n\n' + (result.warning || 'Ссылка на тест не может быть сформирована.'));
             }
-            showModal('Шаблон сохранен успешно');
         } else {
             showModal('Ошибка сохранения: ' + (result.error || 'Неизвестная ошибка'));
         }
