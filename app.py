@@ -808,10 +808,10 @@ def update_teacher(teacher_id):
             db.close()
 
 
-@app.route('/api/admin/teachers/<int:teacher_id>', methods=['DELETE'])
+@app.route('/api/admin/teachers/<int:teacher_id>/deactivate', methods=['POST'])
 @superuser_required
-def delete_teacher(teacher_id):
-    """Удаление учителя (мягкое удаление через is_active=False)"""
+def deactivate_teacher(teacher_id):
+    """Деактивация учителя (мягкое удаление через is_active=False)"""
     db = None
     try:
         db = SessionLocal()
@@ -836,7 +836,7 @@ def delete_teacher(teacher_id):
         # Логирование (после commit, но до close)
         try:
             log_audit_action(
-                action='delete_teacher',
+                action='deactivate_teacher',
                 target_type='teacher',
                 target_id=teacher_id,
                 details={'username': username}
@@ -845,6 +845,51 @@ def delete_teacher(teacher_id):
             print(f"Ошибка логирования: {log_error}")
         
         return jsonify({'success': True, 'message': 'Учитель деактивирован'})
+    
+    except Exception as e:
+        if db:
+            db.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if db:
+            db.close()
+
+
+@app.route('/api/admin/teachers/<int:teacher_id>', methods=['DELETE'])
+@superuser_required
+def delete_teacher(teacher_id):
+    """Полное удаление учителя из базы данных"""
+    db = None
+    try:
+        db = SessionLocal()
+        
+        teacher = db.query(User).filter(
+            User.id == teacher_id,
+            User.role == 'teacher'
+        ).first()
+        
+        if not teacher:
+            return jsonify({'success': False, 'error': 'Учитель не найден'}), 404
+        
+        # Сохраняем username до удаления
+        username = teacher.username
+        
+        # Полное удаление
+        db.delete(teacher)
+        db.commit()
+        
+        # Логирование (после commit, но до close)
+        try:
+            log_audit_action(
+                action='delete_teacher',
+                target_type='teacher',
+                target_id=teacher_id,
+                details={'username': username}
+            )
+        except Exception as log_error:
+            print(f"Ошибка логирования: {log_error}")
+        
+        return jsonify({'success': True, 'message': 'Учитель удален'})
     
     except Exception as e:
         if db:
