@@ -234,10 +234,10 @@ function selectTopic(topic) {
     document.getElementById('stepTestForm').style.display = 'block';
     updateStepIndicator(4);
     
-    // Устанавливаем класс в поле ввода
-    const classInput = document.getElementById('studentClass');
-    if (classInput) {
-        classInput.value = `${filterState.selectedClass} класс`;
+    // Очищаем поле класса - оно будет заполнено при выборе теста
+    const classSelect = document.getElementById('studentClass');
+    if (classSelect) {
+        classSelect.innerHTML = '<option value="">Выберите тест, затем класс...</option>';
     }
     
     // Загружаем тесты для выбранных параметров
@@ -279,8 +279,57 @@ function populateTestSelect(templates) {
         const option = document.createElement('option');
         option.value = template.id;
         option.textContent = template.name || template.id;
+        option.dataset.templateId = template.id;
         select.appendChild(option);
     });
+    
+    // Добавляем обработчик изменения выбора теста
+    select.onchange = function() {
+        const selectedTemplateId = this.value;
+        if (selectedTemplateId) {
+            loadClassesForSelectedTemplate(selectedTemplateId);
+        } else {
+            // Очищаем список классов если тест не выбран
+            const classSelect = document.getElementById('studentClass');
+            if (classSelect) {
+                classSelect.innerHTML = '<option value="">Выберите класс...</option>';
+            }
+        }
+    };
+}
+
+async function loadClassesForSelectedTemplate(templateId) {
+    try {
+        const response = await fetch(`/load_template/${templateId}`);
+        const template = await response.json();
+        
+        if (response.ok && template.classes && template.classes.length > 0) {
+            populateClassSelect(template.classes);
+        } else {
+            // Если классов нет в шаблоне, используем выбранный класс из фильтрации
+            const classSelect = document.getElementById('studentClass');
+            if (classSelect) {
+                classSelect.innerHTML = '<option value="">Выберите класс...</option>';
+                const option = document.createElement('option');
+                option.value = `${filterState.selectedClass} класс`;
+                option.textContent = `${filterState.selectedClass} класс`;
+                option.selected = true;
+                classSelect.appendChild(option);
+            }
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки классов из шаблона:', error);
+        // Fallback: используем выбранный класс из фильтрации
+        const classSelect = document.getElementById('studentClass');
+        if (classSelect) {
+            classSelect.innerHTML = '<option value="">Выберите класс...</option>';
+            const option = document.createElement('option');
+            option.value = `${filterState.selectedClass} класс`;
+            option.textContent = `${filterState.selectedClass} класс`;
+            option.selected = true;
+            classSelect.appendChild(option);
+        }
+    }
 }
 
 function updateStepIndicator(step) {

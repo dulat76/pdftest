@@ -114,7 +114,9 @@
             
             <div class="form-group">
                 <label for="studentClass">Класс:</label>
-                <input type="text" id="studentClass" required class="input" placeholder="Например: 10А" readonly>
+                <select id="studentClass" required class="select">
+                    <option value="">Выберите класс...</option>
+                </select>
             </div>
 
             <button onclick="startTest()" class="btn btn-large">Начать выполнение</button>
