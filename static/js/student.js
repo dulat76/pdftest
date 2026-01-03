@@ -219,19 +219,30 @@ async function loadTopicsForSubject() {
 }
 
 function displayTopics(topics) {
-    const container = document.getElementById('topicsContainer');
-    if (!container) return;
+    const select = document.getElementById('topicSelect');
+    if (!select) return;
     
-    container.innerHTML = '';
+    // Очищаем и заполняем select
+    select.innerHTML = '<option value="">Выберите тему...</option>';
     
-    topics.forEach(topic => {
-        const btn = document.createElement('button');
-        btn.className = 'btn';
-        btn.style.cssText = 'padding: 15px; font-size: 1.1em; min-width: 150px;';
-        btn.textContent = topic;
-        btn.onclick = () => selectTopic(topic);
-        container.appendChild(btn);
+    // Сортируем темы по алфавиту
+    const sortedTopics = [...topics].sort((a, b) => {
+        return a.localeCompare(b, 'ru');
     });
+    
+    sortedTopics.forEach(topic => {
+        const option = document.createElement('option');
+        option.value = topic;
+        option.textContent = topic;
+        select.appendChild(option);
+    });
+    
+    // Обработчик изменения выбора
+    select.onchange = function() {
+        if (this.value) {
+            selectTopic(this.value);
+        }
+    };
 }
 
 function selectTopic(topic) {

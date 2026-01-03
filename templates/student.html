@@ -84,8 +84,11 @@
         <!-- Этап 2: Выбор предмета -->
         <div class="student-form" id="stepSubjectForm" style="display: none;">
             <h2>Шаг 2: Выберите предмет</h2>
-            <div id="subjectsContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 20px 0;">
-                <!-- Предметы будут загружены динамически -->
+            <div class="form-group">
+                <label for="subjectSelect">Предмет:</label>
+                <select id="subjectSelect" required class="select" style="font-size: 1.1em; padding: 12px; width: 100%; max-width: 400px;">
+                    <option value="">Выберите предмет...</option>
+                </select>
             </div>
             <button onclick="goBack()" class="btn" style="margin-top: 20px;">← Назад</button>
         </div>
@@ -93,8 +96,11 @@
         <!-- Этап 3: Выбор темы -->
         <div class="student-form" id="stepTopicForm" style="display: none;">
             <h2>Шаг 3: Выберите тему</h2>
-            <div id="topicsContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin: 20px 0;">
-                <!-- Темы будут загружены динамически -->
+            <div class="form-group">
+                <label for="topicSelect">Тема:</label>
+                <select id="topicSelect" required class="select" style="font-size: 1.1em; padding: 12px; width: 100%; max-width: 400px;">
+                    <option value="">Выберите тему...</option>
+                </select>
             </div>
             <button onclick="goBack()" class="btn" style="margin-top: 20px;">← Назад</button>
         </div>
