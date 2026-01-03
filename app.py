@@ -1282,6 +1282,16 @@ def contacts_page():
     """Страница контактов"""
     return render_template('contacts.html')
 
+@app.route('/forgot-password')
+def forgot_password_page():
+    """Страница восстановления пароля"""
+    return render_template('forgot_password.html')
+
+@app.route('/support')
+def support_page():
+    """Страница поддержки"""
+    return render_template('support.html')
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if session.get('logged_in'):
