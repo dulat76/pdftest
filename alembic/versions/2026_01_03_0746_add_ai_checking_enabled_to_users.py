@@ -7,6 +7,7 @@ Create Date: 2026-01-03 07:46:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 
 # revision identifiers, used by Alembic.
@@ -17,8 +18,14 @@ depends_on = None
 
 
 def upgrade():
-    # Добавляем поле ai_checking_enabled в таблицу users
-    op.add_column('users', sa.Column('ai_checking_enabled', sa.Boolean(), nullable=False, server_default='false'))
+    # Проверяем, существует ли уже поле (на случай, если миграция применяется повторно)
+    connection = op.get_bind()
+    inspector = sa.inspect(connection)
+    columns = [col['name'] for col in inspector.get_columns('users')]
+    
+    if 'ai_checking_enabled' not in columns:
+        # Добавляем поле ai_checking_enabled в таблицу users
+        op.add_column('users', sa.Column('ai_checking_enabled', sa.Boolean(), nullable=False, server_default='false'))
 
 
 def downgrade():
