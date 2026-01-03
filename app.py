@@ -1441,6 +1441,81 @@ def get_subjects():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/cities')
+def get_cities():
+    """Получение списка всех городов с уникальными city_code"""
+    try:
+        db = SessionLocal()
+        
+        # Получаем уникальные комбинации city и city_code
+        cities_query = db.query(
+            User.city,
+            User.city_code
+        ).filter(
+            User.city.isnot(None),
+            User.city_code.isnot(None),
+            User.role == 'teacher',
+            User.is_active == True
+        ).distinct().all()
+        
+        cities_data = []
+        seen_codes = set()
+        
+        for city, city_code in cities_query:
+            if city_code and city_code not in seen_codes:
+                cities_data.append({
+                    'name': city or 'Не указан',
+                    'code': city_code
+                })
+                seen_codes.add(city_code)
+        
+        db.close()
+        
+        return jsonify({'success': True, 'cities': cities_data})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/schools')
+def get_schools():
+    """Получение списка школ для указанного города"""
+    try:
+        city_code = request.args.get('city_code')
+        if not city_code:
+            return jsonify({'success': False, 'error': 'city_code обязателен'}), 400
+        
+        db = SessionLocal()
+        
+        # Получаем уникальные комбинации school и school_code для города
+        schools_query = db.query(
+            User.school,
+            User.school_code
+        ).filter(
+            User.city_code == city_code,
+            User.school.isnot(None),
+            User.school_code.isnot(None),
+            User.role == 'teacher',
+            User.is_active == True
+        ).distinct().all()
+        
+        schools_data = []
+        seen_codes = set()
+        
+        for school, school_code in schools_query:
+            if school_code and school_code not in seen_codes:
+                schools_data.append({
+                    'name': school or 'Не указана',
+                    'code': school_code
+                })
+                seen_codes.add(school_code)
+        
+        db.close()
+        
+        return jsonify({'success': True, 'schools': schools_data})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/classes/by-school/<city_code>/<school_code>')
 def get_classes_by_school(city_code, school_code):
     """Получение уникальных классов из тестов школы"""
