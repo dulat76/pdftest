@@ -164,7 +164,7 @@ async function saveSettings() {
         const result = await response.json();
         
         if (result.success) {
-            showAlert('success', '✅ Настройки успешно сохранены!');
+            showAlert('success', 'Настройки сохранены');
         } else {
             showAlert('error', '❌ Ошибка сохранения: ' + result.error);
         }
