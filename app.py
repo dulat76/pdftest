@@ -1262,6 +1262,17 @@ def help_page():
     """Страница справки и инструкций для учителя"""
     return render_template('help.html')
 
+@app.route('/profile')
+@login_required
+def profile_page():
+    """Страница профиля пользователя"""
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.username == session.get('login')).first()
+        return render_template('profile.html', user=user, login=session.get('login'), role=session.get('role'))
+    finally:
+        db.close()
+
 @app.route('/about')
 def about_page():
     """Страница информации о программе"""
