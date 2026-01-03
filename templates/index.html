@@ -240,6 +240,11 @@
     <div class="header">
         <h1>Система Интерактивного Тестирования</h1>
         <p>Выберите вашу роль для продолжения</p>
+        <div style="margin-top: 20px;">
+            <a href="{{ url_for('about_page') }}" style="color: var(--primary-color); text-decoration: none; font-weight: 600; font-size: 16px; transition: color 0.3s; border-bottom: 2px solid transparent; padding-bottom: 2px; display: inline-block;">
+                О программе
+            </a>
+        </div>
     </div>
 
     <div class="role-selection">
@@ -266,14 +271,9 @@
     <!-- Footer -->
     <footer style="text-align: center; padding: 40px 20px; color: #666; margin-top: 60px;">
         <div style="max-width: 1200px; margin: 0 auto;">
-            <p style="margin-bottom: 20px; font-size: 16px;">
+            <p style="font-size: 16px;">
                 Система интерактивного тестирования © 2025
             </p>
-            <div style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
-                <a href="{{ url_for('about_page') }}" style="color: var(--primary-color); text-decoration: none; font-weight: 600; transition: color 0.3s;">
-                    О программе
-                </a>
-            </div>
         </div>
     </footer>
 
