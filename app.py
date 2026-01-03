@@ -1273,6 +1273,82 @@ def profile_page():
     finally:
         db.close()
 
+@app.route('/statistics')
+@login_required
+def statistics_page():
+    """Страница статистики"""
+    return render_template('statistics.html')
+
+@app.route('/api/statistics')
+@login_required
+def get_statistics():
+    """API для получения статистики пользователя"""
+    try:
+        db = SessionLocal()
+        username = session.get('login')
+        
+        # Подсчет тестов пользователя
+        templates_count = 0
+        if os.path.exists(Config.TEMPLATES_FOLDER):
+            for filename in os.listdir(Config.TEMPLATES_FOLDER):
+                if filename.endswith('.json'):
+                    filepath = os.path.join(Config.TEMPLATES_FOLDER, filename)
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            if data.get('created_by_username') == username:
+                                templates_count += 1
+                    except:
+                        continue
+        
+        # Подсчет результатов из базы данных
+        results = db.query(StudentResult).all()
+        user_results = []
+        total_score = 0
+        results_count = 0
+        
+        for result in results:
+            # Проверяем, относится ли результат к тестам пользователя
+            template_id = result.template_id
+            template_file = os.path.join(Config.TEMPLATES_FOLDER, f"{template_id}.json")
+            if os.path.exists(template_file):
+                try:
+                    with open(template_file, 'r', encoding='utf-8') as f:
+                        template_data = json.load(f)
+                        if template_data.get('created_by_username') == username:
+                            user_results.append({
+                                'date': result.completed_at.strftime('%d.%m.%Y %H:%M') if result.completed_at else '-',
+                                'test_name': template_data.get('name', template_id),
+                                'student_name': result.student_name,
+                                'student_class': result.student_class,
+                                'correct': result.correct_answers,
+                                'total': result.total_questions,
+                                'percentage': round(result.percentage, 1)
+                            })
+                            total_score += result.percentage
+                            results_count += 1
+                except:
+                    continue
+        
+        avg_score = round(total_score / results_count, 1) if results_count > 0 else 0
+        
+        # Последние 10 результатов
+        recent_results = sorted(user_results, key=lambda x: x['date'], reverse=True)[:10]
+        
+        db.close()
+        
+        return jsonify({
+            'success': True,
+            'total_tests': templates_count,
+            'total_results': results_count,
+            'avg_score': avg_score,
+            'active_tests': templates_count,  # Упрощенная версия
+            'recent_results': recent_results
+        })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/about')
 def about_page():
     """Страница информации о программе"""

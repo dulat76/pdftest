@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Статистика - Система Интерактивного Тестирования</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --text-color: #333;
+            --bg-color: #f4f7f6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
+            padding: 50px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid var(--primary-color);
+        }
+
+        .header h1 {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .nav-btn {
+            padding: 12px 24px;
+            background: white;
+            border: 2px solid var(--primary-color);
+            border-radius: 8px;
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .nav-btn:hover {
+            background: var(--primary-color);
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            transition: transform 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-number {
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .stat-label {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .section {
+            margin-bottom: 40px;
+        }
+
+        .section h2 {
+            font-size: 28px;
+            margin-bottom: 20px;
+            color: var(--text-color);
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .info-box h4 {
+            color: #1976d2;
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 30px 20px;
+            }
+
+            .header h1 {
+                font-size: 28px;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Статистика</h1>
+            <p>Аналитика по вашим тестам и результатам</p>
+        </div>
+
+        <div class="nav-buttons">
+            <a href="{{ url_for('editor_page') }}" class="nav-btn">← Редактор</a>
+            <a href="{{ url_for('profile_page') }}" class="nav-btn">Профиль</a>
+            <a href="{{ url_for('help_page') }}" class="nav-btn">Справка</a>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number" id="totalTests">-</div>
+                <div class="stat-label">Всего тестов</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="totalResults">-</div>
+                <div class="stat-label">Всего прохождений</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="avgScore">-</div>
+                <div class="stat-label">Средний балл</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="activeTests">-</div>
+                <div class="stat-label">Активных тестов</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Последние результаты</h2>
+            <div class="table-container">
+                <div class="loading" id="resultsLoading">Загрузка данных...</div>
+                <table id="resultsTable" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th>Дата</th>
+                            <th>Тест</th>
+                            <th>Ученик</th>
+                            <th>Класс</th>
+                            <th>Результат</th>
+                            <th>Балл</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="info-box">
+            <h4>ℹ️ Информация</h4>
+            <p>
+                Статистика обновляется в реальном времени. Для получения более детальной аналитики 
+                используйте Google Sheets, куда автоматически сохраняются все результаты тестов.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStatistics();
+        });
+
+        async function loadStatistics() {
+            try {
+                // Загрузка общей статистики
+                const response = await fetch('/api/statistics');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        document.getElementById('totalTests').textContent = data.total_tests || 0;
+                        document.getElementById('totalResults').textContent = data.total_results || 0;
+                        document.getElementById('avgScore').textContent = data.avg_score ? data.avg_score + '%' : '-';
+                        document.getElementById('activeTests').textContent = data.active_tests || 0;
+
+                        // Загрузка последних результатов
+                        if (data.recent_results && data.recent_results.length > 0) {
+                            const tbody = document.getElementById('resultsTableBody');
+                            tbody.innerHTML = '';
+                            
+                            data.recent_results.forEach(result => {
+                                const row = document.createElement('tr');
+                                row.innerHTML = `
+                                    <td>${result.date || '-'}</td>
+                                    <td>${result.test_name || '-'}</td>
+                                    <td>${result.student_name || '-'}</td>
+                                    <td>${result.student_class || '-'}</td>
+                                    <td>${result.correct}/${result.total}</td>
+                                    <td>${result.percentage || 0}%</td>
+                                `;
+                                tbody.appendChild(row);
+                            });
+
+                            document.getElementById('resultsLoading').style.display = 'none';
+                            document.getElementById('resultsTable').style.display = 'table';
+                        } else {
+                            document.getElementById('resultsLoading').textContent = 'Нет данных для отображения';
+                        }
+                    }
+                } else {
+                    showError();
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки статистики:', error);
+                showError();
+            }
+        }
+
+        function showError() {
+            document.getElementById('resultsLoading').textContent = 'Ошибка загрузки данных. Попробуйте обновить страницу.';
+        }
+    </script>
+</body>
+</html>
+
