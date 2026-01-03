@@ -2405,11 +2405,13 @@ def check_answers():
                 if not existing_data:
                     # Таблица пустая - добавляем заголовки
                     worksheet.append_row(all_headers)
-                elif existing_data[0] != all_headers:
-                    # Заголовки изменились - добавляем новые колонки, но не удаляем старые данные
-                    # Просто добавляем новую строку с правильными заголовками в конец
-                    # (Google Sheets сам определит структуру по первой строке)
-                    pass  # Используем существующие заголовки, если они есть
+                elif len(existing_data) > 0:
+                    # Проверяем, совпадают ли заголовки
+                    existing_headers = existing_data[0]
+                    if existing_headers != all_headers:
+                        # Заголовки изменились - обновляем первую строку
+                        # Это может произойти, если изменилось количество вопросов
+                        worksheet.update('A1', [all_headers])
 
                 now = datetime.now()
                 
