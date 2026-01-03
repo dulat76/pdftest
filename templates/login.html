@@ -40,6 +40,9 @@
           <label>Пароль</label>
           <input name="password" type="password" class="input" required autocomplete="current-password">
         </div>
+        <div style="text-align:right; margin-bottom: 15px;">
+          <a href="{{ url_for('forgot_password_page') }}" style="color: #667eea; text-decoration: none; font-size: 14px;">Забыли пароль?</a>
+        </div>
         <div style="text-align:right;">
           <button class="btn btn-large" type="submit">Войти</button>
         </div>

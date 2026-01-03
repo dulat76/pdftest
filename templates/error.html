@@ -3,8 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ошибка - Система тестирования</title>
+    <title>Ошибка {{ error_code }} - Система Интерактивного Тестирования</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --text-color: #333;
+            --bg-color: #f4f7f6;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -12,46 +20,56 @@
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Montserrat', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
             min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
 
-        .error-container {
-            background: white;
-            padding: 40px;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
-            text-align: center;
-            max-width: 500px;
+        .container {
+            max-width: 600px;
             width: 100%;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
+            padding: 50px;
+            text-align: center;
         }
 
-        .error-icon {
-            font-size: 64px;
-            color: #e74c3c;
+        .error-code {
+            font-size: 120px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
             margin-bottom: 20px;
+            line-height: 1;
         }
 
         .error-title {
-            font-size: 24px;
-            color: #333;
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--text-color);
             margin-bottom: 15px;
-            font-weight: 600;
         }
 
         .error-message {
+            font-size: 18px;
             color: #666;
-            font-size: 16px;
-            margin-bottom: 30px;
-            line-height: 1.5;
+            margin-bottom: 20px;
         }
 
-        .error-actions {
+        .error-description {
+            font-size: 16px;
+            color: #999;
+            margin-bottom: 40px;
+        }
+
+        .action-buttons {
             display: flex;
             gap: 15px;
             justify-content: center;
@@ -59,94 +77,77 @@
         }
 
         .btn {
-            padding: 12px 24px;
+            padding: 15px 30px;
             border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
             text-decoration: none;
-            font-weight: 500;
-            font-size: 14px;
-            transition: all 0.3s ease;
-            border: none;
-            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-block;
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
             color: white;
         }
 
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
-        }
-
         .btn-secondary {
-            background: #f8f9fa;
-            color: #666;
-            border: 1px solid #dee2e6;
+            background: white;
+            color: var(--primary-color);
+            border: 2px solid var(--primary-color);
         }
 
-        .btn-secondary:hover {
-            background: #e9ecef;
-            color: #333;
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
         }
 
-        @media (max-width: 480px) {
-            .error-container {
+        .support-link {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .support-link a {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .support-link a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            .container {
                 padding: 30px 20px;
             }
-            
+
+            .error-code {
+                font-size: 80px;
+            }
+
             .error-title {
-                font-size: 20px;
-            }
-            
-            .error-actions {
-                flex-direction: column;
-            }
-            
-            .btn {
-                width: 100%;
+                font-size: 24px;
             }
         }
     </style>
 </head>
 <body>
-    <div class="error-container">
-        <div class="error-icon">
-            {% if error_code == 404 %}🔍
-            {% elif error_code == 403 %}🔒
-            {% elif error_code == 500 %}⚠️
-            {% else %}❌
-            {% endif %}
+    <div class="container">
+        <div class="error-code">{{ error_code }}</div>
+        <h1 class="error-title">{{ error_title }}</h1>
+        <p class="error-message">{{ error_message }}</p>
+        <p class="error-description">{{ error_description }}</p>
+
+        <div class="action-buttons">
+            <a href="{{ url_for('home') }}" class="btn btn-primary">На главную</a>
+            <a href="javascript:history.back()" class="btn btn-secondary">Назад</a>
         </div>
-        <h1 class="error-title">
-            {% if error_code == 404 %}Страница не найдена
-            {% elif error_code == 403 %}Доступ запрещен
-            {% elif error_code == 500 %}Внутренняя ошибка сервера
-            {% else %}Произошла ошибка
-            {% endif %}
-        </h1>
-        <p class="error-message">
-            {% if error_message %}{{ error_message }}{% else %}Что-то пошло не так. Пожалуйста, попробуйте еще раз.{% endif %}
-        </p>
-        {% if error_description %}
-        <p class="error-message" style="font-size: 14px; color: #999; margin-top: -15px;">
-            {{ error_description }}
-        </p>
-        {% endif %}
-        
-        <div class="error-actions">
-            <a href="/" class="btn btn-primary">На главную</a>
-            <button onclick="history.back()" class="btn btn-secondary">Назад</button>
+
+        <div class="support-link">
+            <p>Нужна помощь? <a href="{{ url_for('support_page') }}">Свяжитесь с поддержкой</a></p>
         </div>
     </div>
-
-    <script>
-        // Автоматическое перенаправление через 10 секунд
-        setTimeout(function() {
-            if (confirm('Перейти на главную страницу?')) {
-                window.location.href = '/';
-            }
-        }, 10000);
-    </script>
 </body>
 </html>

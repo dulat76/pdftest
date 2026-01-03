@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Поддержка - Система Интерактивного Тестирования</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --text-color: #333;
+            --bg-color: #f4f7f6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
+            padding: 50px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid var(--primary-color);
+        }
+
+        .header h1 {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .nav-btn {
+            padding: 12px 24px;
+            background: white;
+            border: 2px solid var(--primary-color);
+            border-radius: 8px;
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .nav-btn:hover {
+            background: var(--primary-color);
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .faq-section {
+            margin-bottom: 40px;
+        }
+
+        .faq-section h2 {
+            font-size: 28px;
+            margin-bottom: 20px;
+            color: var(--text-color);
+        }
+
+        .faq-item {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .faq-question {
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        .faq-answer {
+            color: #555;
+        }
+
+        .form-section {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 15px;
+            margin-top: 40px;
+        }
+
+        .form-section h2 {
+            font-size: 28px;
+            margin-bottom: 20px;
+            color: var(--text-color);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-color);
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .submit-btn {
+            padding: 15px 40px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .info-box h4 {
+            color: #1976d2;
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 30px 20px;
+            }
+
+            .header h1 {
+                font-size: 28px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💬 Поддержка</h1>
+            <p>Мы всегда готовы помочь вам</p>
+        </div>
+
+        <div class="nav-buttons">
+            <a href="{{ url_for('home') }}" class="nav-btn">← На главную</a>
+            <a href="{{ url_for('contacts_page') }}" class="nav-btn">Контакты</a>
+            <a href="{{ url_for('help_page') }}" class="nav-btn">Справка</a>
+        </div>
+
+        <div class="faq-section">
+            <h2>❓ Часто задаваемые вопросы</h2>
+
+            <div class="faq-item">
+                <div class="faq-question">Как восстановить пароль?</div>
+                <div class="faq-answer">
+                    Если вы забыли пароль, обратитесь к администратору системы. Вы также можете использовать 
+                    <a href="{{ url_for('forgot_password_page') }}">страницу восстановления пароля</a> для отправки запроса.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">Результаты тестов не сохраняются в Google Sheets</div>
+                <div class="faq-answer">
+                    Убедитесь, что вы предоставили доступ сервисному аккаунту <code>pdf-test-app@pdftest-473116.iam.gserviceaccount.com</code> 
+                    с правами "Редактор". Подробная инструкция доступна в <a href="{{ url_for('help_page') }}">справке</a>.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">AI проверка не работает</div>
+                <div class="faq-answer">
+                    Проверьте, что AI проверка включена в ваших настройках. Перейдите в раздел "Настройки AI" и убедитесь, 
+                    что переключатель "Включить AI проверку" активен. Также проверьте, что указан корректный API ключ.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">Как создать новый тест?</div>
+                <div class="faq-answer">
+                    Войдите в систему как учитель, перейдите в редактор, загрузите PDF документ, создайте поля для ответов 
+                    и сохраните тест. Подробная инструкция доступна в <a href="{{ url_for('help_page') }}">справке</a>.
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">Как получить ссылку на тест для учеников?</div>
+                <div class="faq-answer">
+                    После сохранения теста в редакторе появится ссылка на тест. Скопируйте её и поделитесь с учениками. 
+                    Ссылка имеет формат: <code>https://docquiz.predmet.kz/student/{city_code}/{school_code}</code>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">Как изменить данные своего профиля?</div>
+                <div class="faq-answer">
+                    Обратитесь к администратору системы для изменения ваших данных. В будущем будет доступна страница профиля 
+                    для самостоятельного редактирования.
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h2>📧 Отправить вопрос</h2>
+            <p style="margin-bottom: 20px; color: #666;">
+                Не нашли ответ на свой вопрос? Отправьте нам сообщение, и мы обязательно поможем вам.
+            </p>
+            <form id="supportForm" onsubmit="handleSubmit(event)">
+                <div class="form-group">
+                    <label for="name">Ваше имя *</label>
+                    <input type="text" id="name" name="name" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email *</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="category">Категория вопроса *</label>
+                    <select id="category" name="category" required>
+                        <option value="">Выберите категорию...</option>
+                        <option value="technical">Техническая проблема</option>
+                        <option value="usage">Вопрос по использованию</option>
+                        <option value="suggestion">Предложение по улучшению</option>
+                        <option value="other">Другое</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="subject">Тема *</label>
+                    <input type="text" id="subject" name="subject" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="message">Сообщение *</label>
+                    <textarea id="message" name="message" required placeholder="Опишите ваш вопрос или проблему подробно..."></textarea>
+                </div>
+
+                <button type="submit" class="submit-btn">Отправить вопрос</button>
+            </form>
+
+            <div class="info-box" id="successMessage" style="display: none;">
+                <h4>✅ Вопрос отправлен!</h4>
+                <p>Спасибо за ваше обращение. Мы ответим вам в ближайшее время на указанный email.</p>
+            </div>
+
+            <div class="info-box" id="errorMessage" style="display: none; background: #ffebee; border-left-color: #f44336;">
+                <h4>❌ Ошибка отправки</h4>
+                <p>Произошла ошибка при отправке сообщения. Пожалуйста, попробуйте еще раз или свяжитесь с нами по email: 
+                <a href="mailto:support@docquiz.predmet.kz">support@docquiz.predmet.kz</a></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function handleSubmit(event) {
+            event.preventDefault();
+            
+            const form = document.getElementById('supportForm');
+            const successMessage = document.getElementById('successMessage');
+            const errorMessage = document.getElementById('errorMessage');
+            
+            // Скрываем предыдущие сообщения
+            successMessage.style.display = 'none';
+            errorMessage.style.display = 'none';
+            
+            // Имитация отправки (в реальности здесь будет AJAX запрос)
+            setTimeout(() => {
+                successMessage.style.display = 'block';
+                form.reset();
+                
+                // Прокрутка к сообщению
+                successMessage.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 500);
+        }
+    </script>
+</body>
+</html>
+
