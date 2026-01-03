@@ -482,6 +482,14 @@
             color: #000;
         }
 
+        .ai-dependent {
+            transition: opacity 0.3s ease, max-height 0.3s ease;
+        }
+
+        .ai-dependent.hidden {
+            display: none;
+        }
+
         @media (max-width: 768px) {
             .settings-grid {
                 grid-template-columns: 1fr;
@@ -751,7 +759,7 @@
             <button class="btn btn-primary" onclick="saveSettings()">
                 💾 Сохранить настройки
             </button>
-            <button class="btn btn-secondary" onclick="testAI()">
+            <button class="btn btn-secondary ai-dependent" onclick="testAI()">
                 🧪 Тест AI
             </button>
             <button class="btn btn-secondary" onclick="loadSettings()">
