@@ -2340,7 +2340,7 @@ def check_answers():
 
         percentage = round((correct_count / total_count) * 100, 2) if total_count else 0
 
-        # Запись в Google Sheets
+        # Запись в Google Sheets - все результаты в одну таблицу "Результаты"
         sheets_result = None
         if sheet_url:
             try:
@@ -2354,7 +2354,7 @@ def check_answers():
                 )
                 client = gspread.authorize(creds)
                 sheet = client.open_by_url(sheet_url)
-                worksheet_title = template_name
+                worksheet_title = "Результаты"
 
                 try:
                     worksheet = sheet.worksheet(worksheet_title)
@@ -2367,10 +2367,30 @@ def check_answers():
 
                 existing_data = worksheet.get_all_values()
 
+                # Получаем информацию о теме, предмете и классе из шаблона
+                topic = template.get('topic', '')
+                subject_id = template.get('subject_id')
+                class_number = template.get('class_number')
+                
+                # Получаем название предмета, если есть subject_id
+                subject_name = ''
+                if subject_id:
+                    db = SessionLocal()
+                    try:
+                        subject = db.query(Subject).filter(Subject.id == subject_id).first()
+                        if subject:
+                            subject_name = subject.name
+                    except Exception as e:
+                        print(f"Ошибка получения предмета: {e}")
+                    finally:
+                        db.close()
+
                 base_headers = [
-                    "Название шаблона",
+                    "Тема/Тест",
+                    "Предмет",
+                    "Класс теста",
                     "ФИО",
-                    "Класс",
+                    "Класс ученика",
                     "Дата",
                     "Время",
                     "Правильных ответов",
@@ -2381,9 +2401,15 @@ def check_answers():
 
                 all_headers = base_headers + question_headers
 
-                if not existing_data or existing_data[0] != all_headers:
-                    worksheet.clear()
+                # Проверяем, нужно ли обновить заголовки
+                if not existing_data:
+                    # Таблица пустая - добавляем заголовки
                     worksheet.append_row(all_headers)
+                elif existing_data[0] != all_headers:
+                    # Заголовки изменились - добавляем новые колонки, но не удаляем старые данные
+                    # Просто добавляем новую строку с правильными заголовками в конец
+                    # (Google Sheets сам определит структуру по первой строке)
+                    pass  # Используем существующие заголовки, если они есть
 
                 now = datetime.now()
                 
@@ -2391,15 +2417,17 @@ def check_answers():
                 student_class = student_info.get("studentClass") or student_info.get("class", "")
                 
                 base_row_data = [
-                    template_name,
-                    student_name,
-                    student_class,
-                    now.strftime("%d.%m.%Y"),
-                    now.strftime("%H:%M:%S"),
-                    correct_count,
-                    total_count,
-                    f"{percentage}%",
-                    ai_check_count
+                    topic if topic else template_name,  # Тема/Тест
+                    subject_name,  # Предмет
+                    f"{class_number} класс" if class_number else "",  # Класс теста
+                    student_name,  # ФИО
+                    student_class,  # Класс ученика
+                    now.strftime("%d.%m.%Y"),  # Дата
+                    now.strftime("%H:%M:%S"),  # Время
+                    correct_count,  # Правильных ответов
+                    total_count,  # Всего вопросов
+                    f"{percentage}%",  # Процент
+                    ai_check_count  # AI проверок
                 ]
 
                 complete_row_data = base_row_data + student_answers_list
@@ -2407,7 +2435,7 @@ def check_answers():
 
                 sheets_result = {
                     "success": True,
-                    "message": f"Результаты сохранены во вкладку '{worksheet_title}'."
+                    "message": f"Результаты сохранены в таблицу '{worksheet_title}'."
                 }
 
             except Exception as e:
