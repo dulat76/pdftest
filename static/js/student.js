@@ -108,19 +108,28 @@ async function loadClassesForSchool() {
 }
 
 function displayClasses(classes) {
-    const container = document.getElementById('classesContainer');
-    if (!container) return;
+    const select = document.getElementById('classSelect');
+    if (!select) return;
     
-    container.innerHTML = '';
+    // Очищаем и заполняем select
+    select.innerHTML = '<option value="">Выберите класс...</option>';
     
-    classes.forEach(classNum => {
-        const btn = document.createElement('button');
-        btn.className = 'btn';
-        btn.style.cssText = 'padding: 15px; font-size: 1.1em; min-width: 80px;';
-        btn.textContent = `${classNum} класс`;
-        btn.onclick = () => selectClass(classNum);
-        container.appendChild(btn);
+    // Сортируем классы по возрастанию
+    const sortedClasses = [...classes].sort((a, b) => a - b);
+    
+    sortedClasses.forEach(classNum => {
+        const option = document.createElement('option');
+        option.value = classNum;
+        option.textContent = `${classNum} класс`;
+        select.appendChild(option);
     });
+    
+    // Обработчик изменения выбора
+    select.onchange = function() {
+        if (this.value) {
+            selectClass(parseInt(this.value));
+        }
+    };
     
     // Показываем форму выбора класса
     document.getElementById('stepClassForm').style.display = 'block';

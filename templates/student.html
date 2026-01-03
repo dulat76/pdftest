@@ -72,8 +72,11 @@
         <!-- Этап 1: Выбор класса -->
         <div class="student-form" id="stepClassForm">
             <h2>Шаг 1: Выберите ваш класс</h2>
-            <div id="classesContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin: 20px 0;">
-                <!-- Классы будут загружены динамически -->
+            <div class="form-group">
+                <label for="classSelect">Ваш класс:</label>
+                <select id="classSelect" required class="select" style="font-size: 1.1em; padding: 12px; width: 100%; max-width: 400px;">
+                    <option value="">Выберите класс...</option>
+                </select>
             </div>
             <button onclick="goBack()" id="backBtn" class="btn" style="display: none; margin-top: 20px;">← Назад</button>
         </div>
