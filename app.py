@@ -1262,6 +1262,11 @@ def help_page():
     """Страница справки и инструкций для учителя"""
     return render_template('help.html')
 
+@app.route('/about')
+def about_page():
+    """Страница информации о программе"""
+    return render_template('about.html')
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if session.get('logged_in'):
