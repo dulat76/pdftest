@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Выбор школы - Система Интерактивного Тестирования</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --text-color: #333;
+            --bg-color: #f4f7f6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            animation: fadeIn 0.6s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            font-size: 16px;
+            color: #666;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-color);
+            margin-bottom: 10px;
+        }
+
+        .form-group select {
+            width: 100%;
+            padding: 14px 16px;
+            font-size: 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            background: white;
+            color: var(--text-color);
+            transition: all 0.3s ease;
+            font-family: 'Montserrat', sans-serif;
+        }
+
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group select:disabled {
+            background: #f5f5f5;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 16px;
+            font-size: 18px;
+            font-weight: 600;
+            color: white;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 10px;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 20px;
+            color: #666;
+            text-decoration: none;
+            font-size: 14px;
+            transition: color 0.3s ease;
+        }
+
+        .back-link:hover {
+            color: var(--primary-color);
+        }
+
+        .loading {
+            text-align: center;
+            color: #666;
+            padding: 20px;
+        }
+
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #c33;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 30px 20px;
+            }
+
+            .header h1 {
+                font-size: 28px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Выбор школы</h1>
+            <p>Выберите город и школу для доступа к тестам</p>
+        </div>
+
+        <div id="errorContainer"></div>
+
+        <form id="schoolForm">
+            <div class="form-group">
+                <label for="citySelect">Город:</label>
+                <select id="citySelect" required>
+                    <option value="">Выберите город...</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="schoolSelect">Школа:</label>
+                <select id="schoolSelect" required disabled>
+                    <option value="">Сначала выберите город</option>
+                </select>
+            </div>
+
+            <button type="submit" class="btn" id="submitBtn" disabled>
+                Перейти к тестам
+            </button>
+        </form>
+
+        <a href="{{ url_for('home') }}" class="back-link">← Вернуться на главную</a>
+    </div>
+
+    <script>
+        let cities = [];
+        let schools = [];
+
+        // Загрузка городов при загрузке страницы
+        document.addEventListener('DOMContentLoaded', async function() {
+            await loadCities();
+        });
+
+        async function loadCities() {
+            try {
+                const response = await fetch('/api/cities');
+                const result = await response.json();
+                
+                if (result.success) {
+                    cities = result.cities;
+                    const citySelect = document.getElementById('citySelect');
+                    
+                    // Сортируем города по алфавиту
+                    cities.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+                    
+                    cities.forEach(city => {
+                        const option = document.createElement('option');
+                        option.value = city.code;
+                        option.textContent = city.name;
+                        citySelect.appendChild(option);
+                    });
+                } else {
+                    showError('Ошибка загрузки городов: ' + (result.error || 'Неизвестная ошибка'));
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки городов:', error);
+                showError('Ошибка подключения к серверу');
+            }
+        }
+
+        // Обработчик изменения города
+        document.getElementById('citySelect').addEventListener('change', async function() {
+            const cityCode = this.value;
+            const schoolSelect = document.getElementById('schoolSelect');
+            const submitBtn = document.getElementById('submitBtn');
+            
+            if (cityCode) {
+                schoolSelect.disabled = true;
+                schoolSelect.innerHTML = '<option value="">Загрузка школ...</option>';
+                submitBtn.disabled = true;
+                
+                await loadSchools(cityCode);
+            } else {
+                schoolSelect.disabled = true;
+                schoolSelect.innerHTML = '<option value="">Сначала выберите город</option>';
+                submitBtn.disabled = true;
+            }
+        });
+
+        async function loadSchools(cityCode) {
+            try {
+                const response = await fetch(`/api/schools?city_code=${cityCode}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    schools = result.schools;
+                    const schoolSelect = document.getElementById('schoolSelect');
+                    const submitBtn = document.getElementById('submitBtn');
+                    
+                    schoolSelect.innerHTML = '<option value="">Выберите школу...</option>';
+                    
+                    // Сортируем школы по названию
+                    schools.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+                    
+                    schools.forEach(school => {
+                        const option = document.createElement('option');
+                        option.value = school.code;
+                        option.textContent = school.name;
+                        schoolSelect.appendChild(option);
+                    });
+                    
+                    schoolSelect.disabled = false;
+                } else {
+                    showError('Ошибка загрузки школ: ' + (result.error || 'Неизвестная ошибка'));
+                    const schoolSelect = document.getElementById('schoolSelect');
+                    schoolSelect.innerHTML = '<option value="">Ошибка загрузки</option>';
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки школ:', error);
+                showError('Ошибка подключения к серверу');
+            }
+        }
+
+        // Обработчик изменения школы
+        document.getElementById('schoolSelect').addEventListener('change', function() {
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = !this.value;
+        });
+
+        // Обработчик отправки формы
+        document.getElementById('schoolForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const cityCode = document.getElementById('citySelect').value;
+            const schoolCode = document.getElementById('schoolSelect').value;
+            
+            if (cityCode && schoolCode) {
+                // Перенаправляем на страницу тестов школы
+                window.location.href = `/student/${cityCode}/${schoolCode}`;
+            }
+        });
+
+        function showError(message) {
+            const errorContainer = document.getElementById('errorContainer');
+            errorContainer.innerHTML = `<div class="error">${message}</div>`;
+            
+            setTimeout(() => {
+                errorContainer.innerHTML = '';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
+

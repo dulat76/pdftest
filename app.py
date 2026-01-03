@@ -1287,6 +1287,11 @@ def logout():
 def student():
     return render_template('student.html')
 
+@app.route('/select-school')
+def select_school():
+    """Страница выбора города и школы"""
+    return render_template('select_school.html')
+
 @app.route('/student/<city_code>/<school_code>')
 def student_by_school(city_code, school_code):
     """Страница для учеников конкретной школы"""
