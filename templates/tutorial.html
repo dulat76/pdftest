@@ -336,10 +336,10 @@
         </div>
 
         <div class="nav-buttons">
-            <a href="{{ url_for('index') }}" class="nav-btn primary">🏠 На главную</a>
+            <a href="{{ url_for('home') }}" class="nav-btn primary">🏠 На главную</a>
             {% if session.get('user_id') %}
             <a href="{{ url_for('editor_page') }}" class="nav-btn">✏️ Редактор</a>
-            <a href="{{ url_for('help') }}" class="nav-btn">📖 Справка</a>
+            <a href="{{ url_for('help_page') }}" class="nav-btn">📖 Справка</a>
             {% endif %}
         </div>
 
@@ -1101,7 +1101,7 @@
             <p style="margin-top: 15px;">Теперь вы готовы эффективно использовать систему интерактивного тестирования.</p>
             <p style="margin-top: 10px; font-size: 14px;">Система интерактивного тестирования © 2026</p>
             <div style="margin-top: 20px;">
-                <a href="{{ url_for('index') }}" class="nav-btn">🏠 На главную</a>
+                <a href="{{ url_for('home') }}" class="nav-btn">🏠 На главную</a>
                 {% if session.get('user_id') %}
                 <a href="{{ url_for('editor_page') }}" class="nav-btn primary">✏️ Начать создавать тесты</a>
                 {% endif %}
