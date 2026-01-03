@@ -9,8 +9,12 @@
         :root {
             --primary-color: #667eea;
             --secondary-color: #764ba2;
+            --teacher-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --student-gradient: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
             --text-color: #333;
             --bg-color: #f4f7f6;
+            --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            --card-shadow-hover: 0 20px 40px rgba(0, 0, 0, 0.15);
         }
 
         * {
@@ -21,81 +25,212 @@
 
         body {
             font-family: 'Montserrat', sans-serif;
-            background-color: var(--bg-color);
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
             display: flex;
             justify-content: center;
             align-items: center;
-            min-height: 100vh;
-            padding: 20px;
         }
 
         .container {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
-            text-align: center;
-            padding: 50px 40px;
-            max-width: 600px;
+            max-width: 1200px;
             width: 100%;
-            overflow: hidden;
-            position: relative;
+            animation: fadeIn 0.6s ease-in;
         }
 
-        .container::before {
-            content: '';
-            position: absolute;
-            top: -10px;
-            left: -10px;
-            right: -10px;
-            height: 50px;
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .header {
-            margin-bottom: 40px;
+            text-align: center;
+            margin-bottom: 60px;
+            color: var(--text-color);
         }
 
         .header h1 {
-            font-size: 28px;
+            font-size: 42px;
             font-weight: 700;
-            color: var(--text-color);
-            margin-bottom: 10px;
+            margin-bottom: 15px;
+            background: var(--teacher-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
 
         .header p {
-            font-size: 16px;
-            color: #777;
+            font-size: 18px;
+            color: #666;
+            font-weight: 400;
         }
 
         .role-selection {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .role-card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px 30px;
+            text-decoration: none;
+            color: var(--text-color);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: var(--card-shadow);
+            position: relative;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            align-items: center;
+            text-align: center;
         }
 
-        .role-btn {
-            display: block;
-            text-decoration: none;
-            color: white;
-            padding: 20px;
-            border-radius: 12px;
-            font-size: 18px;
+        .role-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5px;
+            transition: height 0.3s ease;
+        }
+
+        .role-card:hover {
+            transform: translateY(-10px);
+            box-shadow: var(--card-shadow-hover);
+        }
+
+        .role-card:hover::before {
+            height: 100%;
+            opacity: 0.05;
+        }
+
+        .teacher-card::before {
+            background: var(--teacher-gradient);
+        }
+
+        .student-card::before {
+            background: var(--student-gradient);
+        }
+
+        .role-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            transition: transform 0.3s ease;
+        }
+
+        .role-card:hover .role-icon {
+            transform: scale(1.1) rotate(5deg);
+        }
+
+        .role-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 15px;
+            color: var(--text-color);
+        }
+
+        .teacher-card .role-title {
+            background: var(--teacher-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .student-card .role-title {
+            background: var(--student-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .role-description {
+            font-size: 16px;
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 25px;
+        }
+
+        .role-button {
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 16px;
             font-weight: 600;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            background-size: 200% auto;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
-        .role-btn:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+        .teacher-card .role-button {
+            background: var(--teacher-gradient);
         }
 
-        .teacher-btn {
-            background-image: linear-gradient(to right, #667eea 0%, #764ba2 51%, #667eea 100%);
+        .student-card .role-button {
+            background: var(--student-gradient);
         }
 
-        .student-btn {
-            background-image: linear-gradient(to right, #3498db 0%, #2980b9 51%, #3498db 100%);
+        .role-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Адаптивность */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 32px;
+            }
+
+            .header p {
+                font-size: 16px;
+            }
+
+            .role-selection {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .role-card {
+                padding: 30px 20px;
+            }
+
+            .role-icon {
+                font-size: 56px;
+            }
+
+            .role-title {
+                font-size: 24px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: 10px;
+            }
+
+            .header {
+                margin-bottom: 40px;
+            }
+
+            .header h1 {
+                font-size: 28px;
+            }
+
+            .role-card {
+                padding: 25px 15px;
+            }
         }
     </style>
 </head>
@@ -104,12 +239,27 @@
 <div class="container">
     <div class="header">
         <h1>Система Интерактивного Тестирования</h1>
-        <p>Пожалуйста, выберите вашу роль для продолжения</p>
+        <p>Выберите вашу роль для продолжения</p>
     </div>
 
     <div class="role-selection">
-        <a href="{{ url_for('login') }}" class="role-btn teacher-btn">Я — Учитель</a>
-        <a href="{{ url_for('student') }}" class="role-btn student-btn">Я — Ученик</a>
+        <a href="{{ url_for('login') }}" class="role-card teacher-card">
+            <div class="role-icon">👨‍🏫</div>
+            <h2 class="role-title">Я — Учитель</h2>
+            <p class="role-description">
+                Создавайте тесты, загружайте задания и проверяйте результаты учеников с помощью AI-технологий
+            </p>
+            <div class="role-button">Войти в систему</div>
+        </a>
+
+        <a href="{{ url_for('student') }}" class="role-card student-card">
+            <div class="role-icon">👨‍🎓</div>
+            <h2 class="role-title">Я — Ученик</h2>
+            <p class="role-description">
+                Проходите интерактивные тесты, получайте мгновенную проверку и детальный разбор результатов
+            </p>
+            <div class="role-button">Начать тестирование</div>
+        </a>
     </div>
 </div>
 
