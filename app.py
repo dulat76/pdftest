@@ -237,9 +237,14 @@ def ai_settings():
                 
                 # Сохраняем индивидуальную настройку ai_checking_enabled в БД
                 if user and 'ai_enabled' in settings:
-                    user.ai_checking_enabled = settings.get('ai_enabled', False)
+                    new_value = settings.get('ai_enabled', False)
+                    print(f"💾 Сохранение настройки AI для пользователя {user.username}: {new_value}")
+                    user.ai_checking_enabled = new_value
                     user.updated_at = datetime.utcnow()
                     db.commit()
+                    # Проверяем, что значение сохранилось
+                    db.refresh(user)
+                    print(f"✅ Настройка сохранена. Проверка: user.ai_checking_enabled = {user.ai_checking_enabled}")
             except Exception as e:
                 if db:
                     db.rollback()
@@ -2018,16 +2023,26 @@ def check_answers():
         created_by_username = template.get('created_by_username')
         ai_checking_enabled = False  # По умолчанию выключено
         
+        print(f"🔍 Проверка настроек AI для теста {template_id}")
+        print(f"   Создатель теста: {created_by_username}")
+        
         if created_by_username:
             db = SessionLocal()
             try:
                 creator = db.query(User).filter(User.username == created_by_username).first()
                 if creator:
                     ai_checking_enabled = creator.ai_checking_enabled
+                    print(f"   ✅ Найден создатель: {creator.username}, AI проверка: {ai_checking_enabled}")
+                else:
+                    print(f"   ⚠️ Создатель '{created_by_username}' не найден в БД")
             except Exception as e:
-                print(f"Ошибка при получении настроек создателя теста: {e}")
+                print(f"   ❌ Ошибка при получении настроек создателя теста: {e}")
             finally:
                 db.close()
+        else:
+            print(f"   ⚠️ created_by_username не указан в шаблоне")
+        
+        print(f"   📊 Итоговое значение ai_checking_enabled: {ai_checking_enabled}")
 
         # Получаем AI checker
         ai_checker = get_ai_checker()
@@ -2094,6 +2109,10 @@ def check_answers():
                 and student_answer
                 and len(student_answer) > 1
             )
+            
+            # Логирование для отладки (только для первого неправильного ответа)
+            if not is_correct and student_answer and len(student_answer) > 1 and i == 0:
+                print(f"   🔍 Поле {field_id}: is_correct={is_correct}, ai_checker={ai_checker is not None}, ai_checking_enabled={ai_checking_enabled}, need_ai={need_ai}")
 
             if need_ai:
                 try:
