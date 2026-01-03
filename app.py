@@ -182,6 +182,17 @@ def ai_settings():
     if request.method == 'GET':
         # Чтение настроек
         try:
+            # Получаем индивидуальную настройку пользователя из БД
+            db = SessionLocal()
+            user = None
+            try:
+                user = db.query(User).filter(User.username == session.get('login')).first()
+            except Exception as e:
+                print(f"Ошибка при получении пользователя: {e}")
+            finally:
+                db.close()
+            
+            # Читаем глобальные настройки из файла
             if os.path.exists(settings_file):
                 with open(settings_file, 'r', encoding='utf-8') as f:
                     settings = json.load(f)
@@ -189,7 +200,6 @@ def ai_settings():
                 # Настройки по умолчанию из ai_config.py
                 from ai_config import AIConfig
                 settings = {
-                    'ai_enabled': AIConfig.AI_CHECKING_ENABLED,
                     'similarity_threshold': AIConfig.SIMILARITY_THRESHOLD,
                     'api_key': 'YOUR_API_KEY_HERE',
                     'ai_model': AIConfig.GEMINI_MODEL,
@@ -203,6 +213,12 @@ def ai_settings():
                     'log_file': AIConfig.AI_LOG_FILE
                 }
             
+            # Добавляем индивидуальную настройку пользователя
+            if user:
+                settings['ai_enabled'] = user.ai_checking_enabled
+            else:
+                settings['ai_enabled'] = False  # По умолчанию выключено
+            
             return jsonify({'success': True, 'config': settings})
         
         except Exception as e:
@@ -213,13 +229,34 @@ def ai_settings():
         try:
             settings = request.get_json()
             
-            # Сохраняем в файл
+            # Получаем текущего пользователя
+            db = SessionLocal()
+            user = None
+            try:
+                user = db.query(User).filter(User.username == session.get('login')).first()
+                
+                # Сохраняем индивидуальную настройку ai_checking_enabled в БД
+                if user and 'ai_enabled' in settings:
+                    user.ai_checking_enabled = settings.get('ai_enabled', False)
+                    user.updated_at = datetime.utcnow()
+                    db.commit()
+            except Exception as e:
+                if db:
+                    db.rollback()
+                print(f"Ошибка при сохранении индивидуальных настроек: {e}")
+            finally:
+                if db:
+                    db.close()
+            
+            # Сохраняем глобальные настройки в файл (без ai_enabled)
+            global_settings = settings.copy()
+            global_settings.pop('ai_enabled', None)  # Удаляем ai_enabled из глобальных настроек
+            
             with open(settings_file, 'w', encoding='utf-8') as f:
-                json.dump(settings, f, ensure_ascii=False, indent=2)
+                json.dump(global_settings, f, ensure_ascii=False, indent=2)
             
             # Обновляем конфигурацию в памяти
             from ai_config import AIConfig
-            AIConfig.AI_CHECKING_ENABLED = settings.get('ai_enabled', True)
             AIConfig.SIMILARITY_THRESHOLD = settings.get('similarity_threshold', 0.8)
             
             if settings.get('api_key') and not settings['api_key'].startswith('***'):
@@ -1977,6 +2014,21 @@ def check_answers():
         template_name = template.get("name", template_id)
         fields = template.get('fields', [])
 
+        # Определяем настройки ИИ для создателя теста
+        created_by_username = template.get('created_by_username')
+        ai_checking_enabled = False  # По умолчанию выключено
+        
+        if created_by_username:
+            db = SessionLocal()
+            try:
+                creator = db.query(User).filter(User.username == created_by_username).first()
+                if creator:
+                    ai_checking_enabled = creator.ai_checking_enabled
+            except Exception as e:
+                print(f"Ошибка при получении настроек создателя теста: {e}")
+            finally:
+                db.close()
+
         # Получаем AI checker
         ai_checker = get_ai_checker()
 
@@ -2034,10 +2086,11 @@ def check_answers():
                 check_method = local_result.get("method", "none")
 
             # AI fallback при отсутствии уверенности
+            # Используем индивидуальную настройку создателя теста
             need_ai = (
                 not is_correct
                 and ai_checker
-                and AIConfig.AI_CHECKING_ENABLED
+                and ai_checking_enabled
                 and student_answer
                 and len(student_answer) > 1
             )

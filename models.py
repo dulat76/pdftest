@@ -71,6 +71,7 @@ class User(Base):
     school_code = Column(String(50), nullable=True)
     expiration_date = Column(Date, nullable=True)
     max_tests_limit = Column(Integer, nullable=True)  # Лимит на количество тестов
+    ai_checking_enabled = Column(Boolean, default=False, nullable=False)  # Индивидуальная настройка ИИ проверки
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

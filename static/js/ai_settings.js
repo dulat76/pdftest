@@ -252,7 +252,7 @@ async function testAI() {
 // Сброс настроек
 function resetSettings() {
     if (confirm('Вы уверены, что хотите сбросить все настройки к значениям по умолчанию?')) {
-        document.getElementById('aiEnabled').checked = true;
+        document.getElementById('aiEnabled').checked = false;  // По умолчанию выключено
         updateAIStatus();
         
         document.getElementById('similarityThreshold').value = 80;
