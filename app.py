@@ -622,8 +622,12 @@ def create_teacher():
         # Валидация данных
         validate_teacher_data(data)
         
-        # Генерация логина
-        username = generate_username(data['city_code'], data['school_code'])
+        # Используем переданный username или генерируем из city_code и school_code
+        if data.get('username') and data['username'].strip():
+            username = data['username'].strip().lower()
+        else:
+            # Генерация логина из city_code и school_code, если username не указан
+            username = generate_username(data['city_code'], data['school_code'])
         
         # Проверка уникальности логина и email
         db = SessionLocal()
