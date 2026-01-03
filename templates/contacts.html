@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Контакты - Система Интерактивного Тестирования</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --text-color: #333;
+            --bg-color: #f4f7f6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
+            padding: 50px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid var(--primary-color);
+        }
+
+        .header h1 {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            font-size: 18px;
+            color: #666;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .nav-btn {
+            padding: 12px 24px;
+            background: white;
+            border: 2px solid var(--primary-color);
+            border-radius: 8px;
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .nav-btn:hover {
+            background: var(--primary-color);
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .contact-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .contact-card {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 30px;
+            border-radius: 15px;
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .contact-card h3 {
+            font-size: 22px;
+            margin-bottom: 15px;
+            color: var(--primary-color);
+        }
+
+        .contact-card p {
+            margin-bottom: 10px;
+            color: #555;
+        }
+
+        .contact-card a {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .contact-card a:hover {
+            text-decoration: underline;
+        }
+
+        .form-section {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 15px;
+            margin-top: 40px;
+        }
+
+        .form-section h2 {
+            font-size: 28px;
+            margin-bottom: 20px;
+            color: var(--text-color);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-color);
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .submit-btn {
+            padding: 15px 40px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .info-box h4 {
+            color: #1976d2;
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 30px 20px;
+            }
+
+            .header h1 {
+                font-size: 28px;
+            }
+
+            .contact-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📞 Контакты</h1>
+            <p>Свяжитесь с нами - мы всегда готовы помочь</p>
+        </div>
+
+        <div class="nav-buttons">
+            <a href="{{ url_for('home') }}" class="nav-btn">← На главную</a>
+            <a href="{{ url_for('support_page') }}" class="nav-btn">Поддержка</a>
+        </div>
+
+        <div class="contact-grid">
+            <div class="contact-card">
+                <h3>📧 Email</h3>
+                <p><strong>Общие вопросы:</strong></p>
+                <p><a href="mailto:info@docquiz.predmet.kz">info@docquiz.predmet.kz</a></p>
+                <p style="margin-top: 15px;"><strong>Техническая поддержка:</strong></p>
+                <p><a href="mailto:support@docquiz.predmet.kz">support@docquiz.predmet.kz</a></p>
+            </div>
+
+            <div class="contact-card">
+                <h3>⏰ Время работы</h3>
+                <p><strong>Понедельник - Пятница:</strong></p>
+                <p>9:00 - 18:00 (Алматы)</p>
+                <p style="margin-top: 15px;"><strong>Выходные:</strong></p>
+                <p>Суббота, Воскресенье</p>
+            </div>
+
+            <div class="contact-card">
+                <h3>🌐 Онлайн поддержка</h3>
+                <p>Используйте форму обратной связи ниже для быстрого обращения. Мы ответим в течение 24 часов в рабочие дни.</p>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h2>Форма обратной связи</h2>
+            <form id="contactForm" onsubmit="handleSubmit(event)">
+                <div class="form-group">
+                    <label for="name">Ваше имя *</label>
+                    <input type="text" id="name" name="name" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email *</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="category">Категория обращения *</label>
+                    <select id="category" name="category" required>
+                        <option value="">Выберите категорию...</option>
+                        <option value="technical">Техническая проблема</option>
+                        <option value="usage">Вопрос по использованию</option>
+                        <option value="suggestion">Предложение по улучшению</option>
+                        <option value="other">Другое</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="subject">Тема *</label>
+                    <input type="text" id="subject" name="subject" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="message">Сообщение *</label>
+                    <textarea id="message" name="message" required></textarea>
+                </div>
+
+                <button type="submit" class="submit-btn">Отправить сообщение</button>
+            </form>
+
+            <div class="info-box" id="successMessage" style="display: none;">
+                <h4>✅ Сообщение отправлено!</h4>
+                <p>Спасибо за ваше обращение. Мы свяжемся с вами в ближайшее время.</p>
+            </div>
+
+            <div class="info-box" id="errorMessage" style="display: none; background: #ffebee; border-left-color: #f44336;">
+                <h4>❌ Ошибка отправки</h4>
+                <p>Произошла ошибка при отправке сообщения. Пожалуйста, попробуйте еще раз или свяжитесь с нами по email.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function handleSubmit(event) {
+            event.preventDefault();
+            
+            const form = document.getElementById('contactForm');
+            const formData = new FormData(form);
+            
+            // Здесь можно добавить отправку на сервер
+            // Пока просто показываем сообщение об успехе
+            
+            const successMessage = document.getElementById('successMessage');
+            const errorMessage = document.getElementById('errorMessage');
+            
+            // Скрываем предыдущие сообщения
+            successMessage.style.display = 'none';
+            errorMessage.style.display = 'none';
+            
+            // Имитация отправки (в реальности здесь будет AJAX запрос)
+            setTimeout(() => {
+                successMessage.style.display = 'block';
+                form.reset();
+                
+                // Прокрутка к сообщению
+                successMessage.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 500);
+        }
+    </script>
+</body>
+</html>
+

@@ -1267,6 +1267,21 @@ def about_page():
     """Страница информации о программе"""
     return render_template('about.html')
 
+@app.route('/privacy')
+def privacy_page():
+    """Страница политики конфиденциальности"""
+    return render_template('privacy.html')
+
+@app.route('/terms')
+def terms_page():
+    """Страница пользовательского соглашения"""
+    return render_template('terms.html')
+
+@app.route('/contacts')
+def contacts_page():
+    """Страница контактов"""
+    return render_template('contacts.html')
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if session.get('logged_in'):

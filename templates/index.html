@@ -269,6 +269,14 @@
 
     <!-- Footer -->
     <footer style="text-align: center; padding: 40px 20px; color: #666; margin-top: 60px;">
+        <div style="margin-bottom: 20px;">
+            <div style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; margin-bottom: 20px;">
+                <a href="{{ url_for('about_page') }}" style="color: var(--primary-color); text-decoration: none; font-weight: 500; transition: color 0.3s;">О программе</a>
+                <a href="{{ url_for('contacts_page') }}" style="color: var(--primary-color); text-decoration: none; font-weight: 500; transition: color 0.3s;">Контакты</a>
+                <a href="{{ url_for('privacy_page') }}" style="color: var(--primary-color); text-decoration: none; font-weight: 500; transition: color 0.3s;">Политика конфиденциальности</a>
+                <a href="{{ url_for('terms_page') }}" style="color: var(--primary-color); text-decoration: none; font-weight: 500; transition: color 0.3s;">Пользовательское соглашение</a>
+            </div>
+        </div>
         <p style="font-size: 16px;">
             Система интерактивного тестирования © 2026
         </p>
