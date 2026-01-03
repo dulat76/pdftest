@@ -166,19 +166,33 @@ async function loadSubjectsForClass(classNum) {
 }
 
 function displaySubjects(subjects) {
-    const container = document.getElementById('subjectsContainer');
-    if (!container) return;
+    const select = document.getElementById('subjectSelect');
+    if (!select) return;
     
-    container.innerHTML = '';
+    // Очищаем и заполняем select
+    select.innerHTML = '<option value="">Выберите предмет...</option>';
     
-    subjects.forEach(subject => {
-        const btn = document.createElement('button');
-        btn.className = 'btn';
-        btn.style.cssText = 'padding: 15px; font-size: 1.1em; min-width: 120px;';
-        btn.textContent = subject.name;
-        btn.onclick = () => selectSubject(subject.id, subject.name);
-        container.appendChild(btn);
+    // Сортируем предметы по алфавиту
+    const sortedSubjects = [...subjects].sort((a, b) => {
+        return a.name.localeCompare(b.name, 'ru');
     });
+    
+    sortedSubjects.forEach(subject => {
+        const option = document.createElement('option');
+        option.value = subject.id;
+        option.textContent = subject.name;
+        select.appendChild(option);
+    });
+    
+    // Обработчик изменения выбора
+    select.onchange = function() {
+        if (this.value) {
+            const selectedOption = this.options[this.selectedIndex];
+            const subjectId = parseInt(this.value);
+            const subjectName = selectedOption.textContent;
+            selectSubject(subjectId, subjectName);
+        }
+    };
 }
 
 function selectSubject(subjectId, subjectName) {
