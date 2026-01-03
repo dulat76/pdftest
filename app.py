@@ -2572,6 +2572,23 @@ def clear_ai_cache():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.errorhandler(404)
+def not_found_error(error):
+    """Обработчик ошибки 404"""
+    return render_template('error.html', 
+                         error_code=404,
+                         error_title='Страница не найдена',
+                         error_message='Запрашиваемая страница не существует или была перемещена.',
+                         error_description='Проверьте правильность адреса или вернитесь на главную страницу.'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Обработчик ошибки 500"""
+    return render_template('error.html',
+                         error_code=500,
+                         error_title='Внутренняя ошибка сервера',
+                         error_message='Произошла ошибка при обработке вашего запроса.',
+                         error_description='Мы уже работаем над устранением проблемы. Пожалуйста, попробуйте позже или свяжитесь с поддержкой.'), 500
 
 if __name__ == '__main__':
     app.run(debug=Config.DEBUG)
