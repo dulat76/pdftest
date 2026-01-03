@@ -53,6 +53,12 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Загружаем статистику каждые 30 секунд
     setInterval(loadStatistics, 30000);
+    
+    // Применить скрытие элементов при загрузке страницы
+    // (вызывается после loadSettings, который устанавливает значение чекбокса)
+    setTimeout(() => {
+        updateAIStatus();
+    }, 100);
 });
 
 // Обновление значения порога схожести
@@ -78,6 +84,16 @@ function updateAIStatus() {
         badge.textContent = 'Выключена';
         badge.className = 'status-badge inactive';
     }
+    
+    // Скрыть/показать все элементы, связанные с AI
+    const aiDependentElements = document.querySelectorAll('.ai-dependent');
+    aiDependentElements.forEach(element => {
+        if (enabled) {
+            element.classList.remove('hidden');
+        } else {
+            element.classList.add('hidden');
+        }
+    });
 }
 
 // Применение пресета настроек
