@@ -1256,6 +1256,12 @@ def home():
 def editor_page():
     return render_template('editor.html', login=session.get('login'), role=session.get('role'))
 
+@app.route('/help')
+@login_required
+def help_page():
+    """Страница справки и инструкций для учителя"""
+    return render_template('help.html')
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if session.get('logged_in'):

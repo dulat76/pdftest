@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Справка - Инструкции для учителя</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --text-color: #333;
+            --bg-color: #f4f7f6;
+            --success-color: #27ae60;
+            --warning-color: #f39c12;
+            --error-color: #e74c3c;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid var(--primary-color);
+        }
+
+        .header h1 {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            font-size: 18px;
+            color: #666;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .nav-btn {
+            padding: 12px 24px;
+            background: white;
+            border: 2px solid var(--primary-color);
+            border-radius: 8px;
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .nav-btn:hover {
+            background: var(--primary-color);
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .nav-btn.primary {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            border: none;
+        }
+
+        .toc {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 40px;
+        }
+
+        .toc h2 {
+            font-size: 20px;
+            margin-bottom: 15px;
+            color: var(--text-color);
+        }
+
+        .toc ul {
+            list-style: none;
+        }
+
+        .toc li {
+            margin: 8px 0;
+        }
+
+        .toc a {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+
+        .toc a:hover {
+            color: var(--secondary-color);
+            text-decoration: underline;
+        }
+
+        .section {
+            margin-bottom: 50px;
+            scroll-margin-top: 20px;
+        }
+
+        .section h2 {
+            font-size: 28px;
+            color: var(--text-color);
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .section h3 {
+            font-size: 22px;
+            color: var(--text-color);
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+
+        .section p {
+            margin-bottom: 15px;
+            color: #555;
+            font-size: 16px;
+        }
+
+        .section ul, .section ol {
+            margin-left: 30px;
+            margin-bottom: 20px;
+        }
+
+        .section li {
+            margin-bottom: 10px;
+            color: #555;
+        }
+
+        .highlight-box {
+            background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+            border-left: 4px solid var(--warning-color);
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .highlight-box.critical {
+            background: linear-gradient(135deg, #fee 0%, #fcc 100%);
+            border-left-color: var(--error-color);
+        }
+
+        .highlight-box.success {
+            background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+            border-left-color: var(--success-color);
+        }
+
+        .highlight-box h4 {
+            font-size: 18px;
+            margin-bottom: 10px;
+            color: var(--text-color);
+        }
+
+        .code-block {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            margin: 15px 0;
+            overflow-x: auto;
+        }
+
+        .step {
+            background: #f8f9fa;
+            border-left: 4px solid var(--primary-color);
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 8px;
+        }
+
+        .step-number {
+            display: inline-block;
+            background: var(--primary-color);
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: 700;
+            margin-right: 10px;
+        }
+
+        .email-box {
+            background: #e3f2fd;
+            border: 2px solid #2196f3;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            font-weight: 600;
+            color: #1976d2;
+            text-align: center;
+            margin: 15px 0;
+            word-break: break-all;
+        }
+
+        .faq-item {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+
+        .faq-question {
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        .faq-answer {
+            color: #555;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+
+            .header h1 {
+                font-size: 28px;
+            }
+
+            .section h2 {
+                font-size: 24px;
+            }
+
+            .nav-buttons {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📚 Справка и инструкции</h1>
+            <p>Руководство по использованию системы интерактивного тестирования</p>
+        </div>
+
+        <div class="nav-buttons">
+            <a href="{{ url_for('editor_page') }}" class="nav-btn primary">← Вернуться в редактор</a>
+            <a href="{{ url_for('ai_settings_page') }}" class="nav-btn">⚙️ Настройки AI</a>
+            <a href="{{ url_for('logout') }}" class="nav-btn">🚪 Выход</a>
+        </div>
+
+        <!-- Содержание -->
+        <div class="toc">
+            <h2>📑 Содержание</h2>
+            <ul>
+                <li><a href="#quick-start">1. Быстрый старт</a></li>
+                <li><a href="#create-test">2. Создание теста</a></li>
+                <li><a href="#google-sheets">3. Настройка Google Sheets</a></li>
+                <li><a href="#results">4. Работа с результатами</a></li>
+                <li><a href="#ai-settings">5. Настройки AI проверки</a></li>
+                <li><a href="#test-links">6. Ссылки на тесты</a></li>
+                <li><a href="#faq">7. Часто задаваемые вопросы</a></li>
+            </ul>
+        </div>
+
+        <!-- Раздел 1: Быстрый старт -->
+        <div class="section" id="quick-start">
+            <h2>1. 🚀 Быстрый старт</h2>
+            
+            <h3>Вход в систему</h3>
+            <p>Для входа в систему используйте логин и пароль, предоставленные администратором.</p>
+            
+            <div class="step">
+                <span class="step-number">1</span>
+                <strong>Перейдите на главную страницу</strong> и нажмите кнопку "Я — Учитель"
+            </div>
+            
+            <div class="step">
+                <span class="step-number">2</span>
+                <strong>Введите логин и пароль</strong> в форму входа
+            </div>
+            
+            <div class="step">
+                <span class="step-number">3</span>
+                <strong>После входа</strong> вы попадете в редактор тестов
+            </div>
+
+            <h3>Основные возможности</h3>
+            <ul>
+                <li>📄 Загрузка PDF документов и изображений</li>
+                <li>✏️ Создание интерактивных полей для ответов</li>
+                <li>✅ Указание правильных вариантов ответов</li>
+                <li>🤖 Автоматическая проверка с помощью AI</li>
+                <li>📊 Сохранение результатов в Google Sheets</li>
+                <li>🔗 Генерация уникальных ссылок на тесты</li>
+            </ul>
+        </div>
+
+        <!-- Раздел 2: Создание теста -->
+        <div class="section" id="create-test">
+            <h2>2. 📝 Создание теста</h2>
+
+            <h3>Шаг 1: Загрузка документа</h3>
+            <div class="step">
+                <span class="step-number">1</span>
+                В левой панели нажмите кнопку <strong>"Выбрать файл"</strong>
+            </div>
+            <div class="step">
+                <span class="step-number">2</span>
+                Выберите PDF файл или изображение (PNG, JPG)
+            </div>
+            <div class="step">
+                <span class="step-number">3</span>
+                Документ автоматически загрузится и отобразится в правой части экрана
+            </div>
+
+            <h3>Шаг 2: Создание полей для ответов</h3>
+            <div class="step">
+                <span class="step-number">1</span>
+                Нажмите кнопку <strong>"Добавить поле"</strong> в левой панели
+            </div>
+            <div class="step">
+                <span class="step-number">2</span>
+                Перетащите поле на нужное место в документе
+            </div>
+            <div class="step">
+                <span class="step-number">3</span>
+                Измените размер поля, потянув за углы
+            </div>
+
+            <h3>Шаг 3: Настройка поля</h3>
+            <ul>
+                <li>Введите <strong>правильные варианты ответов</strong> (можно несколько, каждое с новой строки)</li>
+                <li>Выберите <strong>тип проверки</strong> (точное совпадение, с учетом регистра и т.д.)</li>
+                <li>При необходимости добавьте <strong>подсказку</strong> для ученика</li>
+            </ul>
+
+            <h3>Шаг 4: Настройка теста</h3>
+            <div class="step">
+                <span class="step-number">1</span>
+                Выберите <strong>класс</strong>, для которого предназначен тест
+            </div>
+            <div class="step">
+                <span class="step-number">2</span>
+                Выберите <strong>предмет</strong> из списка
+            </div>
+            <div class="step">
+                <span class="step-number">3</span>
+                Введите <strong>название темы</strong> теста
+            </div>
+            <div class="step">
+                <span class="step-number">4</span>
+                Вставьте <strong>ссылку на Google Таблицу</strong> для сохранения результатов (см. раздел 3)
+            </div>
+
+            <h3>Шаг 5: Сохранение теста</h3>
+            <div class="step">
+                <span class="step-number">1</span>
+                Нажмите кнопку <strong>"Сохранить шаблон"</strong>
+            </div>
+            <div class="step">
+                <span class="step-number">2</span>
+                После сохранения появится <strong>ссылка на тест</strong> для учеников
+            </div>
+            <div class="step">
+                <span class="step-number">3</span>
+                Скопируйте ссылку и поделитесь ею с учениками
+            </div>
+        </div>
+
+        <!-- Раздел 3: Настройка Google Sheets (КРИТИЧНО) -->
+        <div class="section" id="google-sheets">
+            <h2>3. 📊 Настройка Google Sheets для сохранения результатов</h2>
+
+            <div class="highlight-box critical">
+                <h4>⚠️ ВАЖНО: Без правильной настройки результаты тестов не будут сохраняться!</h4>
+                <p>Следуйте инструкции ниже точно, шаг за шагом.</p>
+            </div>
+
+            <h3>Шаг 1: Создание Google Таблицы</h3>
+            <div class="step">
+                <span class="step-number">1</span>
+                Откройте <a href="https://sheets.google.com" target="_blank">Google Sheets</a>
+            </div>
+            <div class="step">
+                <span class="step-number">2</span>
+                Создайте новую таблицу или используйте существующую
+            </div>
+            <div class="step">
+                <span class="step-number">3</span>
+                Назовите таблицу, например: "Результаты тестов"
+            </div>
+
+            <h3>Шаг 2: Настройка доступа для сервисного аккаунта</h3>
+            <div class="highlight-box critical">
+                <h4>🔑 КРИТИЧЕСКИ ВАЖНО: Предоставьте доступ сервисному аккаунту!</h4>
+            </div>
+
+            <div class="step">
+                <span class="step-number">1</span>
+                В Google Таблице нажмите кнопку <strong>"Настройки доступа"</strong> (справа вверху)
+            </div>
+            <div class="step">
+                <span class="step-number">2</span>
+                В поле "Добавить пользователей или группы" введите следующий email:
+            </div>
+
+            <div class="email-box">
+                pdf-test-app@pdftest-473116.iam.gserviceaccount.com
+            </div>
+
+            <div class="step">
+                <span class="step-number">3</span>
+                Выберите уровень доступа: <strong>"Редактор"</strong> (полный доступ)
+            </div>
+            <div class="step">
+                <span class="step-number">4</span>
+                Нажмите <strong>"Готово"</strong>
+            </div>
+
+            <div class="highlight-box success">
+                <h4>✅ Проверка доступа</h4>
+                <p>После предоставления доступа сервисный аккаунт сможет автоматически создавать вкладку "Результаты" и сохранять туда данные о прохождении тестов.</p>
+            </div>
+
+            <h3>Шаг 3: Копирование ссылки на таблицу</h3>
+            <div class="step">
+                <span class="step-number">1</span>
+                В Google Таблице нажмите кнопку <strong>"Поделиться"</strong>
+            </div>
+            <div class="step">
+                <span class="step-number">2</span>
+                Скопируйте <strong>ссылку на таблицу</strong> из адресной строки браузера
+            </div>
+            <div class="step">
+                <span class="step-number">3</span>
+                Ссылка должна выглядеть примерно так:
+            </div>
+            <div class="code-block">
+https://docs.google.com/spreadsheets/d/1ABC123...xyz/edit
+            </div>
+
+            <h3>Шаг 4: Вставка ссылки в настройки теста</h3>
+            <div class="step">
+                <span class="step-number">1</span>
+                В редакторе тестов найдите поле <strong>"Ссылка на Google Таблицу"</strong>
+            </div>
+            <div class="step">
+                <span class="step-number">2</span>
+                Вставьте скопированную ссылку в это поле
+            </div>
+            <div class="step">
+                <span class="step-number">3</span>
+                Сохраните тест
+            </div>
+
+            <div class="highlight-box success">
+                <h4>✅ Готово!</h4>
+                <p>Теперь все результаты прохождения теста будут автоматически сохраняться в вашу Google Таблицу во вкладку "Результаты".</p>
+            </div>
+        </div>
+
+        <!-- Раздел 4: Работа с результатами -->
+        <div class="section" id="results">
+            <h2>4. 📈 Работа с результатами</h2>
+
+            <h3>Где найти результаты</h3>
+            <p>Все результаты сохраняются в Google Таблицу, которую вы указали при создании теста, во вкладку <strong>"Результаты"</strong>.</p>
+
+            <h3>Структура таблицы "Результаты"</h3>
+            <p>Таблица содержит следующие колонки:</p>
+            <ul>
+                <li><strong>Тема/Тест</strong> - название темы или теста</li>
+                <li><strong>Предмет</strong> - название предмета</li>
+                <li><strong>Класс теста</strong> - для какого класса предназначен тест</li>
+                <li><strong>ФИО</strong> - имя ученика</li>
+                <li><strong>Класс ученика</strong> - класс ученика</li>
+                <li><strong>Дата</strong> - дата прохождения теста</li>
+                <li><strong>Время</strong> - время прохождения</li>
+                <li><strong>Правильных ответов</strong> - количество правильных ответов</li>
+                <li><strong>Всего вопросов</strong> - общее количество вопросов</li>
+                <li><strong>Процент</strong> - процент правильных ответов</li>
+                <li><strong>AI проверок</strong> - количество ответов, проверенных через AI</li>
+                <li><strong>Ответы на вопросы</strong> - детальные ответы ученика по каждому вопросу</li>
+            </ul>
+
+            <h3>Фильтрация результатов</h3>
+            <div class="step">
+                <span class="step-number">1</span>
+                В Google Таблице выделите первую строку с заголовками
+            </div>
+            <div class="step">
+                <span class="step-number">2</span>
+                Нажмите <strong>"Данные" → "Создать фильтр"</strong>
+            </div>
+            <div class="step">
+                <span class="step-number">3</span>
+                Используйте стрелки в заголовках для фильтрации по:
+                <ul>
+                    <li>Теме/Тесту</li>
+                    <li>Предмету</li>
+                    <li>Классу</li>
+                    <li>Дате</li>
+                    <li>ФИО ученика</li>
+                </ul>
+            </div>
+
+            <h3>Экспорт данных</h3>
+            <p>Для экспорта результатов:</p>
+            <ul>
+                <li><strong>Файл → Скачать</strong> - выберите формат (Excel, CSV, PDF)</li>
+                <li>Или используйте <strong>Google Sheets API</strong> для программного доступа</li>
+            </ul>
+        </div>
+
+        <!-- Раздел 5: Настройки AI проверки -->
+        <div class="section" id="ai-settings">
+            <h2>5. 🤖 Настройки AI проверки</h2>
+
+            <h3>Включение/выключение AI проверки</h3>
+            <div class="step">
+                <span class="step-number">1</span>
+                Перейдите в раздел <strong>"Настройки AI"</strong> (кнопка в навигации редактора)
+            </div>
+            <div class="step">
+                <span class="step-number">2</span>
+                Переключите <strong>"Включить AI проверку"</strong>
+            </div>
+            <div class="step">
+                <span class="step-number">3</span>
+                Нажмите <strong>"Сохранить настройки"</strong>
+            </div>
+
+            <div class="highlight-box">
+                <h4>💡 Важно</h4>
+                <p>Настройка AI проверки <strong>индивидуальна для каждого учителя</strong>. По умолчанию AI проверка выключена. Вы можете включить её только для своих тестов.</p>
+            </div>
+
+            <h3>Когда используется AI проверка</h3>
+            <p>AI проверка используется автоматически, если:</p>
+            <ul>
+                <li>AI проверка включена в ваших настройках</li>
+                <li>Обычная проверка (точное совпадение, fuzzy matching) не дала результата</li>
+                <li>Ответ ученика не совпадает с правильными вариантами</li>
+            </ul>
+
+            <h3>Настройка параметров проверки</h3>
+            <ul>
+                <li><strong>Порог схожести</strong> - минимальная схожесть для обычной проверки (ниже используется AI)</li>
+                <li><strong>API ключ Gemini</strong> - ключ для доступа к Google Gemini AI</li>
+                <li><strong>Модель AI</strong> - выбор модели для проверки</li>
+                <li><strong>Температура</strong> - креативность AI (0.0 = строгий, 1.0 = креативный)</li>
+                <li><strong>Системный промпт</strong> - инструкции для AI о том, как проверять ответы</li>
+            </ul>
+        </div>
+
+        <!-- Раздел 6: Ссылки на тесты -->
+        <div class="section" id="test-links">
+            <h2>6. 🔗 Ссылки на тесты</h2>
+
+            <h3>Как получить ссылку на тест</h3>
+            <div class="step">
+                <span class="step-number">1</span>
+                После сохранения теста в редакторе появится блок <strong>"Ссылка на тест"</strong>
+            </div>
+            <div class="step">
+                <span class="step-number">2</span>
+                Ссылка будет иметь формат:
+            </div>
+            <div class="code-block">
+https://docquiz.predmet.kz/student/{city_code}/{school_code}
+            </div>
+            <p>Где <code>{city_code}</code> - код вашего города, <code>{school_code}</code> - код вашей школы.</p>
+
+            <h3>Пример ссылки</h3>
+            <div class="code-block">
+https://docquiz.predmet.kz/student/ast/sch59
+            </div>
+            <p>Где <code>ast</code> - код города Астана, <code>sch59</code> - код школы №59.</p>
+
+            <h3>Публикация ссылки для учеников</h3>
+            <ul>
+                <li>Скопируйте ссылку из блока "Ссылка на тест"</li>
+                <li>Отправьте ссылку ученикам через мессенджер, email или разместите на сайте</li>
+                <li>Ученики перейдут по ссылке и смогут выбрать нужный тест</li>
+            </ul>
+
+            <div class="highlight-box">
+                <h4>💡 Важно</h4>
+                <p>По одной ссылке доступны <strong>все тесты вашей школы</strong>. Ученики смогут выбрать нужный тест, используя фильтры: класс → предмет → тема → тест.</p>
+            </div>
+        </div>
+
+        <!-- Раздел 7: FAQ -->
+        <div class="section" id="faq">
+            <h2>7. ❓ Часто задаваемые вопросы</h2>
+
+            <div class="faq-item">
+                <div class="faq-question">❓ Что делать, если результаты не сохраняются в Google Sheets?</div>
+                <div class="faq-answer">
+                    <p><strong>Проверьте следующее:</strong></p>
+                    <ol>
+                        <li>Убедитесь, что вы предоставили доступ сервисному аккаунту <code>pdf-test-app@pdftest-473116.iam.gserviceaccount.com</code></li>
+                        <li>Проверьте, что уровень доступа установлен как <strong>"Редактор"</strong></li>
+                        <li>Убедитесь, что ссылка на таблицу вставлена правильно в настройках теста</li>
+                        <li>Проверьте, что таблица существует и доступна</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">❓ Как изменить уже созданный тест?</div>
+                <div class="faq-answer">
+                    <p>В редакторе загрузите существующий тест, внесите изменения и сохраните. Тест будет обновлен.</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">❓ Как удалить тест?</div>
+                <div class="faq-answer">
+                    <p>Обратитесь к администратору системы для удаления теста из базы данных.</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">❓ Почему AI проверка не работает?</div>
+                <div class="faq-answer">
+                    <p><strong>Возможные причины:</strong></p>
+                    <ul>
+                        <li>AI проверка выключена в ваших настройках (по умолчанию выключена)</li>
+                        <li>Не указан API ключ Gemini в настройках AI</li>
+                        <li>API ключ недействителен или истек</li>
+                        <li>Обычная проверка дала результат, поэтому AI не используется</li>
+                    </ul>
+                    <p>Проверьте настройки AI в разделе "Настройки AI".</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">❓ Можно ли использовать одну Google Таблицу для нескольких тестов?</div>
+                <div class="faq-answer">
+                    <p><strong>Да!</strong> Все результаты всех тестов сохраняются в одну таблицу "Результаты". Используйте фильтры Google Sheets для выборки результатов по теме, предмету или классу.</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">❓ Как ученики находят нужный тест?</div>
+                <div class="faq-answer">
+                    <p>Ученики переходят по ссылке вашей школы и последовательно выбирают:</p>
+                    <ol>
+                        <li>Класс</li>
+                        <li>Предмет</li>
+                        <li>Тему</li>
+                        <li>Конкретный тест</li>
+                    </ol>
+                    <p>Все выборы происходят через выпадающие списки.</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-question">❓ Что делать, если забыл пароль?</div>
+                <div class="faq-answer">
+                    <p>Обратитесь к администратору системы для восстановления пароля.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Футер -->
+        <div style="margin-top: 50px; padding-top: 30px; border-top: 2px solid #e0e0e0; text-align: center; color: #666;">
+            <p>Если у вас возникли вопросы, обратитесь к администратору системы.</p>
+            <p style="margin-top: 10px; font-size: 14px;">Система интерактивного тестирования © 2025</p>
+        </div>
+    </div>
+</body>
+</html>
+
