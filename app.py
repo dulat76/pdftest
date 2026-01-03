@@ -1354,6 +1354,11 @@ def about_page():
     """Страница информации о программе"""
     return render_template('about.html')
 
+@app.route('/tutorial')
+def tutorial_page():
+    """Страница обучающего материала"""
+    return render_template('tutorial.html')
+
 @app.route('/privacy')
 def privacy_page():
     """Страница политики конфиденциальности"""
