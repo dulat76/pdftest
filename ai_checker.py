@@ -444,10 +444,19 @@ JSON: {{"is_correct": true/false, "confidence": 0-100, "explanation": "крат�
             
             try:
                 result = response.json()
-            except ValueError as json_error:
+            except json.JSONDecodeError as json_error:
                 # Если не удалось распарсить JSON, выводим первые 500 символов ответа
                 error_text = response.text[:500] if response.text else 'Пустой ответ'
+                print(f"❌ Ошибка парсинга JSON от Ollama: {json_error}")
+                print(f"   Content-Type: {response.headers.get('Content-Type')}")
+                print(f"   Статус: {response.status_code}")
+                print(f"   Ответ: {error_text}")
                 raise ValueError(f"Не удалось распарсить JSON ответ от Ollama: {json_error}. Ответ: {error_text}")
+            except ValueError as json_error:
+                # Другие ValueError
+                error_text = response.text[:500] if response.text else 'Пустой ответ'
+                print(f"❌ Ошибка парсинга ответа от Ollama: {json_error}")
+                raise ValueError(f"Ошибка парсинга ответа от Ollama: {json_error}. Ответ: {error_text}")
             
             content = result.get("response", "").strip()
             
