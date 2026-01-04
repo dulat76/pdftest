@@ -189,41 +189,51 @@ def ai_settings():
             try:
                 user = db.query(User).filter(User.username == session.get('login')).first()
                 
-                # Загружаем список доступных моделей
-                models = db.query(AIModel).filter(AIModel.is_active == True).order_by(AIModel.priority.asc(), AIModel.name.asc()).all()
-                for model in models:
-                    available_models.append({
-                        'id': model.id,
-                        'name': model.name,
-                        'provider': model.provider,
-                        'model_name': model.model_name,
-                        'requires_api_key': model.requires_api_key,
-                        'description': model.description,
-                        'config_json': model.config_json
-                    })
+                # Загружаем список доступных моделей с фильтрацией по доступу
+                all_models = db.query(AIModel).filter(AIModel.is_active == True).order_by(AIModel.priority.asc(), AIModel.name.asc()).all()
+                for model in all_models:
+                    # Для моделей Ollama проверяем доступ
+                    if model.provider == 'ollama':
+                        # Модель доступна если глобально включена ИЛИ у пользователя есть индивидуальный доступ
+                        if model.is_available_for_teachers or (user.ollama_access_enabled if user else False):
+                            available_models.append({
+                                'id': model.id,
+                                'name': model.name,
+                                'provider': model.provider,
+                                'model_name': model.model_name,
+                                'requires_api_key': model.requires_api_key,
+                                'description': model.description,
+                                'config_json': model.config_json
+                            })
+                    else:
+                        # Для остальных моделей просто проверяем is_active
+                        available_models.append({
+                            'id': model.id,
+                            'name': model.name,
+                            'provider': model.provider,
+                            'model_name': model.model_name,
+                            'requires_api_key': model.requires_api_key,
+                            'description': model.description,
+                            'config_json': model.config_json
+                        })
             except Exception as e:
                 print(f"Ошибка при получении пользователя: {e}")
             finally:
                 db.close()
             
-            # Читаем глобальные настройки из файла
-            if os.path.exists(settings_file):
-                with open(settings_file, 'r', encoding='utf-8') as f:
-                    settings = json.load(f)
-            else:
-                # Настройки по умолчанию из ai_config.py
-                from ai_config import AIConfig
-                settings = {
-                    'similarity_threshold': AIConfig.SIMILARITY_THRESHOLD,
-                    'temperature': AIConfig.GENERATION_CONFIG['temperature'],
-                    'max_tokens': AIConfig.GENERATION_CONFIG['max_output_tokens'],
-                    'top_p': AIConfig.GENERATION_CONFIG['top_p'],
-                    'system_prompt': AIConfig.SYSTEM_PROMPT,
-                    'cache_enabled': AIConfig.CACHE_AI_RESPONSES,
-                    'cache_duration': AIConfig.CACHE_DURATION,
-                    'logging_enabled': AIConfig.LOG_AI_REQUESTS,
-                    'log_file': AIConfig.AI_LOG_FILE
-                }
+            # Используем настройки по умолчанию из ai_config.py (файл больше не используется)
+            from ai_config import AIConfig
+            settings = {
+                'similarity_threshold': AIConfig.SIMILARITY_THRESHOLD,
+                'temperature': AIConfig.GENERATION_CONFIG['temperature'],
+                'max_tokens': AIConfig.GENERATION_CONFIG['max_output_tokens'],
+                'top_p': AIConfig.GENERATION_CONFIG['top_p'],
+                'system_prompt': AIConfig.SYSTEM_PROMPT,
+                'cache_enabled': AIConfig.CACHE_AI_RESPONSES,
+                'cache_duration': AIConfig.CACHE_DURATION,
+                'logging_enabled': AIConfig.LOG_AI_REQUESTS,
+                'log_file': AIConfig.AI_LOG_FILE
+            }
             
             # Добавляем индивидуальные настройки пользователя
             if user:
@@ -313,14 +323,8 @@ def ai_settings():
                 if db:
                     db.close()
             
-            # Сохраняем глобальные настройки в файл (без ai_enabled, ai_model_id, ai_api_key)
-            global_settings = settings.copy()
-            global_settings.pop('ai_enabled', None)
-            global_settings.pop('ai_model_id', None)
-            global_settings.pop('ai_api_key', None)
-            
-            with open(settings_file, 'w', encoding='utf-8') as f:
-                json.dump(global_settings, f, ensure_ascii=False, indent=2)
+            # Все настройки сохраняются в БД, файл больше не используется
+            # Убрано сохранение в ai_settings.json, так как файловая система в контейнере только для чтения
             
             # Обновляем конфигурацию в памяти
             from ai_config import AIConfig
