@@ -440,9 +440,22 @@ class AIAnswerChecker:
             )
             
             response.encoding = 'utf-8'
+            
+            # Проверяем, что ответ действительно JSON
+            content_type = response.headers.get('Content-Type', '')
+            if 'application/json' not in content_type:
+                error_text = response.text[:200] if response.text else 'Нет текста ответа'
+                raise ValueError(f"Ollama вернул не JSON ответ (Content-Type: {content_type}). Ответ: {error_text}")
+            
             response.raise_for_status()
             
-            result = response.json()
+            try:
+                result = response.json()
+            except ValueError as json_error:
+                # Если не удалось распарсить JSON, выводим первые 500 символов ответа
+                error_text = response.text[:500] if response.text else 'Пустой ответ'
+                raise ValueError(f"Не удалось распарсить JSON ответ от Ollama: {json_error}. Ответ: {error_text}")
+            
             content = result.get("response", "").strip()
             
             # Парсим JSON из ответа
