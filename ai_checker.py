@@ -436,7 +436,7 @@ class AIAnswerChecker:
                         "top_k": 10
                     }
                 },
-                timeout=30  # Ollama может работать медленнее на CPU
+                timeout=90  # Увеличено для медленных CPU и первой загрузки модели в память
             )
             
             response.encoding = 'utf-8'
