@@ -201,6 +201,7 @@
                     <th>Модель</th>
                     <th>Требует API</th>
                     <th>Статус</th>
+                    <th>Доступ учителям</th>
                     <th>Используют</th>
                     <th>Приоритет</th>
                     <th>Действия</th>
@@ -274,6 +275,14 @@
                         </label>
                     </div>
                     
+                    <div class="form-group" id="isAvailableForTeachersGroup" style="display: none;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="isAvailableForTeachers" style="width: auto;">
+                            <span>Доступна для всех учителей (только для встроенных моделей)</span>
+                        </label>
+                        <small style="color: #666;">Включает глобальный доступ к модели для всех учителей. Для индивидуального доступа используйте настройки в профиле учителя.</small>
+                    </div>
+                    
                     <div class="modal-actions">
                         <button type="button" onclick="closeModal()" style="padding: 10px 20px; background: #95a5a6; color: white; border: none; border-radius: 6px; cursor: pointer;">Отмена</button>
                         <button type="submit" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">Сохранить</button>
@@ -312,7 +321,7 @@
             tbody.innerHTML = '';
             
             if (models.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px;">Нет моделей</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 40px;">Нет моделей</td></tr>';
                 return;
             }
             
@@ -324,6 +333,7 @@
                     <td><code>${model.model_name}</code></td>
                     <td>${model.requires_api_key ? '✅ Да' : '❌ Нет'}</td>
                     <td><span class="status-badge ${model.is_active ? 'status-active' : 'status-inactive'}">${model.is_active ? 'Активна' : 'Неактивна'}</span></td>
+                    <td>${model.provider === 'ollama' ? (model.is_available_for_teachers ? '✅ Да' : '❌ Нет') : '—'}</td>
                     <td>${model.users_count || 0}</td>
                     <td>${model.priority}</td>
                     <td>
@@ -351,6 +361,7 @@
             document.getElementById('modelForm').reset();
             document.getElementById('modelId').value = '';
             document.getElementById('isActiveGroup').style.display = 'none';
+            document.getElementById('isAvailableForTeachersGroup').style.display = 'none';
             document.getElementById('modelModal').style.display = 'block';
         }
         
@@ -370,6 +381,14 @@
             document.getElementById('configJson').value = model.config_json ? JSON.stringify(model.config_json, null, 2) : '';
             document.getElementById('isActive').checked = model.is_active;
             document.getElementById('isActiveGroup').style.display = 'block';
+            
+            // Показываем чекбокс is_available_for_teachers только для моделей Ollama
+            if (model.provider === 'ollama') {
+                document.getElementById('isAvailableForTeachers').checked = model.is_available_for_teachers || false;
+                document.getElementById('isAvailableForTeachersGroup').style.display = 'block';
+            } else {
+                document.getElementById('isAvailableForTeachersGroup').style.display = 'none';
+            }
             
             document.getElementById('modelModal').style.display = 'block';
         }
@@ -435,6 +454,11 @@
                 max_requests_per_minute: document.getElementById('maxRequestsPerMinute').value ? parseInt(document.getElementById('maxRequestsPerMinute').value) : null,
                 is_active: document.getElementById('isActive').checked
             };
+            
+            // Добавляем is_available_for_teachers только для моделей Ollama
+            if (document.getElementById('provider').value === 'ollama') {
+                modelData.is_available_for_teachers = document.getElementById('isAvailableForTeachers').checked;
+            }
             
             // Парсим JSON конфигурацию
             const configJsonText = document.getElementById('configJson').value.trim();

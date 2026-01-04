@@ -76,6 +76,7 @@ class User(Base):
     # Поля для выбора AI модели
     ai_model_id = Column(Integer, ForeignKey('ai_models.id', ondelete='SET NULL'), nullable=True, index=True)  # Выбранная модель
     ai_api_key = Column(String(500), nullable=True)  # API ключ для внешних моделей
+    ollama_access_enabled = Column(Boolean, default=False, nullable=False)  # Индивидуальный доступ к встроенной модели Ollama
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -212,6 +213,7 @@ class AIModel(Base):
     model_name = Column(String(200), nullable=False)  # Техническое имя модели
     requires_api_key = Column(Boolean, default=False, nullable=False)  # Требует ли API ключ
     is_active = Column(Boolean, default=True, nullable=False, index=True)  # Доступна ли модель
+    is_available_for_teachers = Column(Boolean, default=False, nullable=False)  # Глобальное управление доступом для всех учителей
     description = Column(Text, nullable=True)  # Описание модели
     config_json = Column(JSON, nullable=True)  # Дополнительные настройки (temperature, max_tokens и т.д.)
     priority = Column(Integer, default=0, nullable=False)  # Приоритет отображения (меньше = выше)

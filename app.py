@@ -820,6 +820,7 @@ def get_teacher(teacher_id):
             'tests_count': tests_count,
             'ai_model_id': teacher.ai_model_id,
             'ai_model_name': ai_model_name,
+            'ollama_access_enabled': teacher.ollama_access_enabled,
             'created_at': teacher.created_at.isoformat() if teacher.created_at else None
         }
         
@@ -914,6 +915,8 @@ def update_teacher(teacher_id):
                 teacher.ai_model_id = model_id
             else:
                 teacher.ai_model_id = None
+        if 'ollama_access_enabled' in data:
+            teacher.ollama_access_enabled = data['ollama_access_enabled']
         
         teacher.updated_at = datetime.utcnow()
         
@@ -1346,6 +1349,7 @@ def list_ai_models():
                 'model_name': model.model_name,
                 'requires_api_key': model.requires_api_key,
                 'is_active': model.is_active,
+                'is_available_for_teachers': model.is_available_for_teachers,
                 'description': model.description,
                 'config_json': model.config_json,
                 'priority': model.priority,
@@ -1384,6 +1388,7 @@ def create_ai_model():
             model_name=data['model_name'],
             requires_api_key=data.get('requires_api_key', False),
             is_active=data.get('is_active', True),
+            is_available_for_teachers=data.get('is_available_for_teachers', False),
             description=data.get('description'),
             config_json=data.get('config_json'),
             priority=data.get('priority', 0),
@@ -1451,6 +1456,8 @@ def update_ai_model(model_id):
             model.requires_api_key = data['requires_api_key']
         if 'is_active' in data:
             model.is_active = data['is_active']
+        if 'is_available_for_teachers' in data:
+            model.is_available_for_teachers = data['is_available_for_teachers']
         if 'description' in data:
             model.description = data['description']
         if 'config_json' in data:
@@ -1471,6 +1478,7 @@ def update_ai_model(model_id):
             'model_name': model.model_name,
             'requires_api_key': model.requires_api_key,
             'is_active': model.is_active,
+            'is_available_for_teachers': model.is_available_for_teachers,
             'description': model.description,
             'config_json': model.config_json,
             'priority': model.priority,
@@ -1546,20 +1554,41 @@ def get_available_ai_models():
     """Получение списка доступных AI моделей для текущего пользователя"""
     try:
         db = SessionLocal()
-        # Возвращаем только активные модели
-        models = db.query(AIModel).filter(AIModel.is_active == True).order_by(AIModel.priority.asc(), AIModel.name.asc()).all()
+        user = db.query(User).filter(User.id == session.get('user_id')).first()
+        
+        if not user:
+            db.close()
+            return jsonify({'success': False, 'error': 'Пользователь не найден'}), 401
+        
+        # Получаем все активные модели
+        all_models = db.query(AIModel).filter(AIModel.is_active == True).order_by(AIModel.priority.asc(), AIModel.name.asc()).all()
         
         models_data = []
-        for model in models:
-            models_data.append({
-                'id': model.id,
-                'name': model.name,
-                'provider': model.provider,
-                'model_name': model.model_name,
-                'requires_api_key': model.requires_api_key,
-                'description': model.description,
-                'config_json': model.config_json
-            })
+        for model in all_models:
+            # Для моделей Ollama проверяем доступ
+            if model.provider == 'ollama':
+                # Модель доступна если глобально включена ИЛИ у пользователя есть индивидуальный доступ
+                if model.is_available_for_teachers or (user.ollama_access_enabled if user else False):
+                    models_data.append({
+                        'id': model.id,
+                        'name': model.name,
+                        'provider': model.provider,
+                        'model_name': model.model_name,
+                        'requires_api_key': model.requires_api_key,
+                        'description': model.description,
+                        'config_json': model.config_json
+                    })
+            else:
+                # Для остальных моделей просто проверяем is_active
+                models_data.append({
+                    'id': model.id,
+                    'name': model.name,
+                    'provider': model.provider,
+                    'model_name': model.model_name,
+                    'requires_api_key': model.requires_api_key,
+                    'description': model.description,
+                    'config_json': model.config_json
+                })
         
         db.close()
         return jsonify({'success': True, 'models': models_data})
