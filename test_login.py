@@ -32,3 +32,5 @@ else:
     print(f"❌ АУТЕНТИФИКАЦИЯ НЕУДАЧНА")
     print(f"   Ошибка: {result['error']}")
 
+
+

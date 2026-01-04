@@ -8,6 +8,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime, date
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from config import Config
 from auth_utils import auth_manager, login_required, superuser_required
 from models import SessionLocal, User, Template, AuditLog, Subject, SubjectClass, AIModel
@@ -2663,6 +2664,11 @@ def check_answers():
             "embed_max_tokens": AIConfig.EMBED_MAX_TOKENS,
         }
 
+        # Структура для хранения результатов локального скоринга и AI задач
+        field_results = {}
+        ai_tasks = []
+
+        # Шаг 1: Локальный скоринг для всех полей
         for i, field in enumerate(fields):
             field_id = field['id']
             correct_variants = [v.strip().lower() for v in field.get('variants', [])]
@@ -2702,6 +2708,24 @@ def check_answers():
                 semantic_sim = local_result.get("semantic_sim", 0.0)
                 check_method = local_result.get("method", "none")
 
+            # Сохраняем результаты локального скоринга
+            field_results[i] = {
+                "field_id": field_id,
+                "student_answer": student_answer,
+                "correct_variants": correct_variants,
+                "is_correct": is_correct,
+                "checked_by_ai": False,
+                "ai_confidence": 0.0,
+                "ai_explanation": "",
+                "ai_error": None,
+                "check_method": check_method,
+                "fuzzy_score": fuzzy_score,
+                "semantic_sim": semantic_sim,
+                "thresholds_used": thresholds,
+                "question_context": correct_variants[0] if correct_variants else "",
+                "question_number": i + 1
+            }
+
             # AI fallback при отсутствии уверенности
             # Используем индивидуальную настройку создателя теста
             need_ai = (
@@ -2716,7 +2740,208 @@ def check_answers():
             if not is_correct and student_answer and len(student_answer) > 1 and i == 0:
                 print(f"   🔍 Поле {field_id}: is_correct={is_correct}, ai_checker={ai_checker is not None}, ai_checking_enabled={ai_checking_enabled}, need_ai={need_ai}")
 
+            # Собираем задачи для параллельной AI проверки
             if need_ai:
+                # Получаем model_name из модели, если доступен
+                model_name_to_use = None
+                if created_by_username:
+                    db = SessionLocal()
+                    try:
+                        creator = db.query(User).filter(User.username == created_by_username).first()
+                        if creator and creator.ai_model:
+                            model_name_to_use = creator.ai_model.model_name
+                    except Exception:
+                        pass
+                    finally:
+                        db.close()
+                
+                ai_tasks.append({
+                    "index": i,
+                    "field_id": field_id,
+                    "student_answer": student_answer,
+                    "correct_variants": correct_variants,
+                    "question_context": field_results[i]["question_context"],
+                    "model_name": model_name_to_use,
+                    "fuzzy_score": fuzzy_score,
+                    "semantic_sim": semantic_sim,
+                    "check_method": check_method
+                })
+
+        # Шаг 2: Параллельная обработка AI задач
+        if ai_tasks and ai_checker:
+            print(f"🚀 Запуск параллельной AI проверки для {len(ai_tasks)} полей...")
+            
+            def check_single_field(task):
+                """Функция для проверки одного поля через AI"""
+                try:
+                    check_result = ai_checker.check_answer(
+                        student_answer=task["student_answer"],
+                        correct_variants=task["correct_variants"],
+                        question_context=task["question_context"],
+                        system_prompt=AIConfig.SYSTEM_PROMPT,
+                        model_name=task["model_name"]
+                    )
+                    return {
+                        "index": task["index"],
+                        "field_id": task["field_id"],
+                        "success": True,
+                        "result": asdict(check_result),
+                        "error": None
+                    }
+                except Exception as e:
+                    import traceback
+                    return {
+                        "index": task["index"],
+                        "field_id": task["field_id"],
+                        "success": False,
+                        "result": None,
+                        "error": str(e),
+                        "traceback": traceback.format_exc()
+                    }
+
+            # Параллельная обработка с максимум 3 потоками (соответствует OLLAMA_NUM_PARALLEL=3)
+            max_workers = min(3, len(ai_tasks))
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_task = {executor.submit(check_single_field, task): task for task in ai_tasks}
+                
+                for future in as_completed(future_to_task):
+                    task = future_to_task[future]
+                    try:
+                        ai_result = future.result()
+                        i = ai_result["index"]
+                        
+                        if ai_result["success"]:
+                            result_dict = ai_result["result"]
+                            print(f"   ✅ AI проверка для поля {ai_result['field_id']}: {result_dict.get('is_correct', False)}")
+                            
+                            field_results[i]["is_correct"] = result_dict.get('is_correct', False)
+                            field_results[i]["checked_by_ai"] = True
+                            field_results[i]["ai_confidence"] = result_dict.get('confidence', 0.0)
+                            
+                            # Получаем explanation с правильной кодировкой
+                            ai_explanation = result_dict.get('explanation', 'Нет объяснения от AI')
+                            try:
+                                if isinstance(ai_explanation, bytes):
+                                    ai_explanation = ai_explanation.decode('utf-8')
+                            except UnicodeDecodeError:
+                                ai_explanation = "Не удалось декодировать объяснение"
+                            
+                            field_results[i]["ai_explanation"] = ai_explanation
+                            field_results[i]["check_method"] = "ai_fallback" if field_results[i]["check_method"] == "none" else field_results[i]["check_method"]
+                            
+                            if field_results[i]["is_correct"]:
+                                ai_check_count += 1
+                            
+                            # Логирование AI проверки
+                            if AIConfig.LOG_AI_REQUESTS:
+                                log_entry = {
+                                    "timestamp": datetime.now().isoformat(),
+                                    "template_id": template_id,
+                                    "field_id": ai_result["field_id"],
+                                    "question_number": field_results[i]["question_number"],
+                                    "student_answer": field_results[i]["student_answer"],
+                                    "correct_variants": field_results[i]["correct_variants"],
+                                    "question_context": field_results[i]["question_context"],
+                                    "ai_provider": result_dict.get('ai_provider', 'unknown'),
+                                    "is_correct": field_results[i]["is_correct"],
+                                    "confidence": field_results[i]["ai_confidence"],
+                                    "explanation": ai_explanation,
+                                    "success": True,
+                                    "fuzzy_score": field_results[i]["fuzzy_score"],
+                                    "semantic_sim": field_results[i]["semantic_sim"],
+                                    "method": field_results[i]["check_method"],
+                                    "thresholds_used": thresholds,
+                                }
+                                
+                                log_file_path = os.path.join(Config.BASE_DIR, AIConfig.AI_LOG_FILE)
+                                os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
+                                
+                                with open(log_file_path, 'a', encoding='utf-8') as log_f:
+                                    log_f.write(json.dumps(log_entry, ensure_ascii=False, indent=None) + '\n')
+                        else:
+                            # Обработка ошибки AI
+                            field_results[i]["checked_by_ai"] = True
+                            field_results[i]["ai_error"] = ai_result["error"]
+                            field_results[i]["ai_explanation"] = f"Ошибка вызова AI: {ai_result['error']}"
+                            field_results[i]["check_method"] = "ai_error"
+                            print(f"⚠️ Ошибка AI проверки для поля {ai_result['field_id']}: {ai_result['error']}")
+                            
+                            if AIConfig.LOG_AI_REQUESTS:
+                                log_entry = {
+                                    "timestamp": datetime.now().isoformat(),
+                                    "template_id": template_id,
+                                    "field_id": ai_result["field_id"],
+                                    "question_number": field_results[i]["question_number"],
+                                    "student_answer": field_results[i]["student_answer"],
+                                    "correct_variants": field_results[i]["correct_variants"],
+                                    "error": ai_result["error"],
+                                    "error_traceback": ai_result.get("traceback", ""),
+                                    "success": False,
+                                    "fuzzy_score": field_results[i]["fuzzy_score"],
+                                    "semantic_sim": field_results[i]["semantic_sim"],
+                                    "method": field_results[i]["check_method"],
+                                    "thresholds_used": thresholds,
+                                }
+                                
+                                log_file_path = os.path.join(Config.BASE_DIR, AIConfig.AI_LOG_FILE)
+                                os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
+                                
+                                with open(log_file_path, 'a', encoding='utf-8') as log_f:
+                                    log_f.write(json.dumps(log_entry, ensure_ascii=False, indent=None) + '\n')
+                    except Exception as e:
+                        print(f"⚠️ Критическая ошибка при обработке AI результата для поля {task['field_id']}: {e}")
+                        import traceback
+                        traceback.print_exc()
+            
+            print(f"✅ Параллельная AI проверка завершена. Проверено {len(ai_tasks)} полей.")
+
+        # Шаг 3: Формирование финальных результатов
+        for i, field in enumerate(fields):
+            result = field_results[i]
+            
+            if result["is_correct"]:
+                correct_count += 1
+
+            # Подготовка детального результата
+            detail = {
+                "field_id": result["field_id"],
+                "student_answer": result["student_answer"],
+                "correct_variants": result["correct_variants"],
+                "is_correct": result["is_correct"],
+                "checked_by_ai": result["checked_by_ai"],
+                "ai_confidence": result["ai_confidence"],
+                "ai_explanation": result["ai_explanation"] if result["checked_by_ai"] else None,
+                "check_method": result["check_method"],
+                "fuzzy_score": result["fuzzy_score"],
+                "semantic_sim": result["semantic_sim"],
+                "thresholds_used": result["thresholds_used"]
+            }
+            
+            if result["ai_error"]:
+                detail["ai_error"] = result["ai_error"]
+            
+            detailed_results.append(detail)
+            student_answers_list.append(result["student_answer"])
+
+            # Формирование заголовков
+            if result["correct_variants"]:
+                base_header = result["correct_variants"][0]
+                clean_header = re.sub(r'[^\w\s\-а-яёА-ЯЁ]', '', base_header)
+                clean_header = clean_header[:30].strip()
+
+                if not clean_header:
+                    clean_header = f"Вопрос {i+1}"
+
+                header = clean_header
+                if clean_header in question_headers:
+                    header = f"{clean_header} ({i+1})"
+            else:
+                header = f"Вопрос {i+1}"
+
+            question_headers.append(header)
+
+        # Старый код удален - заменен на параллельную обработку выше
+        # if need_ai:
                 try:
                     question_context = correct_variants[0] if correct_variants else ""
 

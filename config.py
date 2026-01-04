@@ -8,15 +8,15 @@ class Config:
     SESSION_TIMEOUT_HOURS = 2
     PDF_DPI = 200
 
-    # 1. Определение базового пути (ДОЛЖНО ИДТИ ПЕРЕД ДРУГИМИ ПУТЯМИ)
-    # BASE_DIR - это абсолютный путь к папке pdftest_app
+    # рџ“‚ 1. РћРїСЂРµРґРµР»РµРЅРёРµ Р±Р°Р·РѕРІРѕРіРѕ РїСѓС‚Рё (Р”РћР›Р–РќРћ РР”РўР РџР•Р Р•Р” Р”Р РЈР“РРњР РџРЈРўРЇРњР)
+    # BASE_DIR - СЌС‚Рѕ Р°Р±СЃРѕР»СЋС‚РЅС‹Р№ РїСѓС‚СЊ Рє РїР°РїРєРµ pdftest_app
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-    # 2. Настройка всех путей (используем абсолютные пути)
+    # рџ“‚ 2. РќР°СЃС‚СЂРѕР№РєР° РІСЃРµС… РїСѓС‚РµР№ (РёСЃРїРѕР»СЊР·СѓРµРј Р°Р±СЃРѕР»СЋС‚РЅС‹Рµ РїСѓС‚Рё)
     UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
     TEMPLATES_FOLDER = os.path.join(BASE_DIR, "templates_json")
     STATIC_FOLDER = os.path.join(BASE_DIR, "static")
-    # КРИТИЧЕСКИ ВАЖНАЯ СТРОКА: папка для ключей авторизации
+    # рџ”‘ РљР РРўРР§Р•РЎРљР Р’РђР–РќРђРЇ РЎРўР РћРљРђ: РїР°РїРєР° РґР»СЏ РєР»СЋС‡РµР№ Р°РІС‚РѕСЂРёР·Р°С†РёРё
     CREDENTIALS_FOLDER = os.path.join(BASE_DIR, "credentials") 
 
     # Google Sheets API
@@ -25,7 +25,7 @@ class Config:
         'https://www.googleapis.com/auth/drive'
     ]
 
-    # ссылка на Google Sheets
+    # рџ”‘ СЃСЃС‹Р»РєР° РЅР° Google Sheets
     USERS_SHEET_URL = "https://docs.google.com/spreadsheets/d/1yI_73HFTwXFuG2-2nwxqodoGCM0gDC6uDDp16t3aLa8/edit?gid=0#gid=0"
 
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
@@ -33,15 +33,14 @@ class Config:
 
     @staticmethod
     def create_directories():
-        """Создает все необходимые папки, если они не существуют."""
+        """РЎРѕР·РґР°РµС‚ РІСЃРµ РЅРµРѕР±С…РѕРґРёРјС‹Рµ РїР°РїРєРё, РµСЃР»Рё РѕРЅРё РЅРµ СЃСѓС‰РµСЃС‚РІСѓСЋС‚."""
         import os
         for folder in [
             Config.UPLOAD_FOLDER,  
             Config.TEMPLATES_FOLDER,  
             Config.STATIC_FOLDER,
-            Config.CREDENTIALS_FOLDER, # <--- Добавленная папка для ключей
-            os.path.join(Config.BASE_DIR, 'logs')  # Папка для логов
-            # Папка templates не нужна, так как Flask ищет ее сам в корне проекта
+            Config.CREDENTIALS_FOLDER # <--- Р”РѕР±Р°РІР»РµРЅРЅР°СЏ РїР°РїРєР° РґР»СЏ РєР»СЋС‡РµР№
+            # РџР°РїРєР° templates РЅРµ РЅСѓР¶РЅР°, С‚Р°Рє РєР°Рє Flask РёС‰РµС‚ РµРµ СЃР°Рј РІ РєРѕСЂРЅРµ РїСЂРѕРµРєС‚Р°
         ]:
-            # exist_ok=True предотвращает ошибку, если папка уже есть
-            os.makedirs(folder, mode=0o755, exist_ok=True)
+            # exist_ok=True РїСЂРµРґРѕС‚РІСЂР°С‰Р°РµС‚ РѕС€РёР±РєСѓ, РµСЃР»Рё РїР°РїРєР° СѓР¶Рµ РµСЃС‚СЊ
+            os.makedirs(folder, exist_ok=True)

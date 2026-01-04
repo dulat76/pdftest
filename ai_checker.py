@@ -398,27 +398,20 @@ class AIAnswerChecker:
         # В Docker используем имя контейнера 'ollama', локально - 'localhost'
         ollama_url = os.getenv('OLLAMA_URL', 'http://ollama:11434')
         
-        # Формируем промпт аналогично Gemini
-        correct_answers_str = "\n".join([f"- {v}" for v in correct_variants])
+        # Оптимизированный компактный промпт для ускорения обработки
+        correct_answers_str = ", ".join(correct_variants[:3])  # Ограничиваем до 3 вариантов
+        if len(correct_variants) > 3:
+            correct_answers_str += "..."
         
-        user_prompt = f"""Проверь ответ студента. Верни ТОЛЬКО валидный JSON, без дополнительного текста.
+        user_prompt = f"""Проверь ответ. Верни ТОЛЬКО JSON без текста.
 
-Вопрос/Контекст: {question_context or "Не указан"}
+Вопрос: {question_context[:100] if question_context else "Не указан"}
+Правильно: {correct_answers_str}
+Ответ: "{student_answer[:200]}"
 
-Правильные ответы:
-{correct_answers_str}
+Критерии: синонимы, опечатки, падежи. Лояльность если суть верна.
 
-Ответ студента: "{student_answer}"
-
-Критерии:
-- Учитывай синонимы, опечатки, падежи
-- Будь лоялен если суть верна
-- VR = virtual reality (разные форматы допустимы)
-- Истина/Верно/True - синонимы
-- Ложь/Не верно/False - синонимы
-
-Формат ответа (только JSON, ничего больше):
-{{"is_correct": true, "confidence": 95, "explanation": "краткое пояснение"}}"""
+JSON: {{"is_correct": true/false, "confidence": 0-100, "explanation": "кратко"}}"""
         
         try:
             url = f"{ollama_url}/api/generate"
@@ -431,7 +424,7 @@ class AIAnswerChecker:
                     "stream": False,
                     "options": {
                         "temperature": 0.1,
-                        "num_predict": 150,  # Уменьшено для ускорения обработки
+                        "num_predict": 120,  # Оптимизировано для быстрой обработки
                         "top_p": 0.8,
                         "top_k": 10
                     }

@@ -8,33 +8,18 @@ import hashlib
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 import os
-from urllib.parse import urlparse
 
 class AICacheManager:
     """Менеджер кэша для ответов ИИ"""
     
     def __init__(self):
-        # Парсим DATABASE_URL или используем отдельные переменные окружения
-        database_url = os.getenv('DATABASE_URL')
-        if database_url:
-            # Парсим DATABASE_URL: postgresql://user:password@host:port/database
-            parsed = urlparse(database_url)
-            self.db_config = {
-                'host': parsed.hostname or 'localhost',
-                'database': parsed.path.lstrip('/') or 'flask_db',
-                'user': parsed.username or 'flask_user',
-                'password': parsed.password or 'flask_password123',
-                'port': parsed.port or 5432
-            }
-        else:
-            # Fallback на отдельные переменные окружения
-            self.db_config = {
-                'host': os.getenv('POSTGRES_HOST', 'localhost'),
-                'database': os.getenv('POSTGRES_DB', 'flask_db'),
-                'user': os.getenv('POSTGRES_USER', 'flask_user'),
-                'password': os.getenv('POSTGRES_PASSWORD', 'flask_password123'),
-                'port': int(os.getenv('POSTGRES_PORT', 5432))
-            }
+        self.db_config = {
+            'host': os.getenv('POSTGRES_HOST', 'flask_db'),
+            'database': os.getenv('POSTGRES_DB', 'flask_db'),
+            'user': os.getenv('POSTGRES_USER', 'flask_user'),
+            'password': os.getenv('POSTGRES_PASSWORD', 'flask_password123'),
+            'port': int(os.getenv('POSTGRES_PORT', 5432))
+        }
         self.default_ttl = int(os.getenv('AI_CACHE_TTL', 3600))  # 1 час по умолчанию
     
     def _get_connection(self):

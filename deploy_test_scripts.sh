@@ -17,3 +17,5 @@ echo "   python3 test_db_only.py"
 echo "   или"
 echo "   python3 test_auth_simple.py"
 
+
+

@@ -5,12 +5,7 @@ from functools import lru_cache
 from typing import Dict, List, Optional, Tuple
 
 from rapidfuzz import fuzz
-
-try:
-    from sentence_transformers import SentenceTransformer, util
-except ImportError:
-    SentenceTransformer = None
-    util = None
+from sentence_transformers import SentenceTransformer, util
 
 try:
     import spacy
@@ -79,8 +74,6 @@ def fuzzy_score(a: str, b: str) -> float:
 def _ensure_model():
     """Лениво загружает sentence-transformers модель."""
     global _embed_model
-    if SentenceTransformer is None:
-        return None
     if _embed_model is None:
         with _model_lock:
             if _embed_model is None:
@@ -93,9 +86,6 @@ def _ensure_model():
 def embed(text: str, max_tokens: int = 512):
     """Строит эмбеддинг, обрезая длину входа."""
     model = _ensure_model()
-    if model is None:
-        # Fallback: возвращаем None, если модель недоступна
-        return None
     safe_text = text or ""
     # Простое усечение по словам
     tokens = safe_text.split()
@@ -106,16 +96,8 @@ def embed(text: str, max_tokens: int = 512):
 
 def preload_model():
     """Явная загрузка модели и spaCy (для старта приложения)."""
-    try:
-        _ensure_model()
-    except Exception:
-        # Если sentence_transformers недоступен, просто пропускаем
-        pass
-    try:
-        _ensure_nlp()
-    except Exception:
-        # Если spacy недоступен, просто пропускаем
-        pass
+    _ensure_model()
+    _ensure_nlp()
 
 
 def _prepare_variants(template_id: str, field_id: str, variants: List[str], max_tokens: int):
@@ -129,7 +111,6 @@ def _prepare_variants(template_id: str, field_id: str, variants: List[str], max_
         norm = normalize(v)
         lem = lemmatize(norm)
         emb = embed(lem, max_tokens=max_tokens)
-        # Если embed вернул None (sentence_transformers недоступен), используем None
         prepared.append((lem, emb))
     _variant_embeddings[cache_key] = prepared
 
@@ -214,24 +195,22 @@ def score_answer(
                 "from_cache": False,
             }
 
-    # Семантика + soft fuzzy (только если sentence_transformers доступен)
+    # Семантика + soft fuzzy
     student_emb = embed(student_lem, max_tokens=max_tokens)
     best_sem = 0.0
-    if student_emb is not None and util is not None:
-        for variant_lem, variant_emb in prepared:
-            # semantic
-            if variant_emb is not None:
-                cos_sim = float(util.cos_sim(student_emb, variant_emb))
-                best_sem = max(best_sem, cos_sim)
-                if cos_sim >= sem_threshold:
-                    return {
-                        "is_correct": True,
-                        "method": "semantic",
-                        "fuzzy_score": best_fuzzy,
-                        "semantic_sim": cos_sim,
-                        "thresholds_used": thresholds,
-                        "from_cache": False,
-                    }
+    for variant_lem, variant_emb in prepared:
+        # semantic
+        cos_sim = float(util.cos_sim(student_emb, variant_emb))
+        best_sem = max(best_sem, cos_sim)
+        if cos_sim >= sem_threshold:
+            return {
+                "is_correct": True,
+                "method": "semantic",
+                "fuzzy_score": best_fuzzy,
+                "semantic_sim": cos_sim,
+                "thresholds_used": thresholds,
+                "from_cache": False,
+            }
 
     if best_fuzzy >= soft_threshold:
         return {
