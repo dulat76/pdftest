@@ -644,6 +644,11 @@ def list_teachers():
                 Template.created_by_username == teacher.username
             ).count()
             
+            # Получаем информацию о модели AI
+            ai_model_name = None
+            if teacher.ai_model:
+                ai_model_name = teacher.ai_model.name
+            
             teachers_data.append({
                 'id': teacher.id,
                 'username': teacher.username,
@@ -658,6 +663,9 @@ def list_teachers():
                 'expiration_date': teacher.expiration_date.isoformat() if teacher.expiration_date else None,
                 'max_tests_limit': teacher.max_tests_limit,
                 'tests_count': tests_count,
+                'ai_model_id': teacher.ai_model_id,
+                'ai_model_name': ai_model_name,
+                'ollama_access_enabled': teacher.ollama_access_enabled if teacher.ollama_access_enabled is not None else False,
                 'created_at': teacher.created_at.isoformat() if teacher.created_at else None
             })
         
@@ -922,7 +930,12 @@ def update_teacher(teacher_id):
             else:
                 teacher.ai_model_id = None
         if 'ollama_access_enabled' in data:
-            teacher.ollama_access_enabled = data['ollama_access_enabled']
+            # Преобразуем в boolean, если пришло как строка
+            value = data['ollama_access_enabled']
+            if isinstance(value, str):
+                teacher.ollama_access_enabled = value.lower() in ('true', '1', 'yes', 'on')
+            else:
+                teacher.ollama_access_enabled = bool(value)
         
         teacher.updated_at = datetime.utcnow()
         
