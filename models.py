@@ -73,8 +73,15 @@ class User(Base):
     max_tests_limit = Column(Integer, nullable=True)  # Лимит на количество тестов
     ai_checking_enabled = Column(Boolean, default=False, nullable=False)  # Индивидуальная настройка ИИ проверки
     
+    # Поля для выбора AI модели
+    ai_model_id = Column(Integer, ForeignKey('ai_models.id', ondelete='SET NULL'), nullable=True, index=True)  # Выбранная модель
+    ai_api_key = Column(String(500), nullable=True)  # API ключ для внешних моделей
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationship к AI модели
+    ai_model = relationship('AIModel', foreign_keys=[ai_model_id])
 
 
 class Template(Base):
@@ -193,6 +200,24 @@ class SystemMetric(Base):
     metric_unit = Column(String(50), nullable=True)
     tags = Column(JSON, nullable=True)  # Additional metadata
     recorded_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class AIModel(Base):
+    """AI Model configuration."""
+    __tablename__ = 'ai_models'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False)  # Отображаемое имя модели
+    provider = Column(String(50), nullable=False, index=True)  # 'ollama', 'gemini', 'groq', 'cohere'
+    model_name = Column(String(200), nullable=False)  # Техническое имя модели
+    requires_api_key = Column(Boolean, default=False, nullable=False)  # Требует ли API ключ
+    is_active = Column(Boolean, default=True, nullable=False, index=True)  # Доступна ли модель
+    description = Column(Text, nullable=True)  # Описание модели
+    config_json = Column(JSON, nullable=True)  # Дополнительные настройки (temperature, max_tokens и т.д.)
+    priority = Column(Integer, default=0, nullable=False)  # Приоритет отображения (меньше = выше)
+    max_requests_per_minute = Column(Integer, nullable=True)  # Лимит запросов в минуту
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class AuditLog(Base):

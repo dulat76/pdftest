@@ -137,11 +137,13 @@ function loadPromptPreset(preset) {
 
 // Сохранение настроек
 async function saveSettings() {
+    const aiModelId = document.getElementById('aiModelId').value;
+    const apiKey = document.getElementById('apiKey').value;
+    
     const settings = {
         ai_enabled: document.getElementById('aiEnabled').checked,
         similarity_threshold: parseInt(document.getElementById('similarityThreshold').value) / 100,
-        api_key: document.getElementById('apiKey').value,
-        ai_model: document.getElementById('aiModel').value,
+        ai_model_id: aiModelId ? parseInt(aiModelId) : null,
         temperature: parseInt(document.getElementById('temperature').value) / 100,
         max_tokens: parseInt(document.getElementById('maxTokens').value),
         top_p: parseFloat(document.getElementById('topP').value),
@@ -151,6 +153,11 @@ async function saveSettings() {
         logging_enabled: document.getElementById('loggingEnabled').checked,
         log_file: document.getElementById('logFile').value
     };
+    
+    // Добавляем API ключ только если он указан и не начинается с *** (т.е. это новый ключ)
+    if (apiKey && !apiKey.startsWith('***')) {
+        settings.ai_api_key = apiKey;
+    }
 
     try {
         const response = await fetch('/api/ai/settings', {
@@ -177,10 +184,10 @@ async function saveSettings() {
 async function loadSettings() {
     try {
         const response = await fetch('/api/ai/settings');
-        const settings = await response.json();
+        const result = await response.json();
 
-        if (settings.success) {
-            const config = settings.config;
+        if (result.success) {
+            const config = result.config;
             
             document.getElementById('aiEnabled').checked = config.ai_enabled;
             updateAIStatus();
@@ -188,11 +195,44 @@ async function loadSettings() {
             document.getElementById('similarityThreshold').value = Math.round(config.similarity_threshold * 100);
             updateThresholdValue(Math.round(config.similarity_threshold * 100));
             
-            if (config.api_key && config.api_key !== 'YOUR_API_KEY_HERE') {
-                document.getElementById('apiKey').value = '***' + config.api_key.slice(-8);
+            // Загружаем список доступных моделей
+            const modelSelect = document.getElementById('aiModelId');
+            modelSelect.innerHTML = '<option value="">Выберите модель...</option>';
+            
+            if (config.available_models && config.available_models.length > 0) {
+                // Группируем модели по провайдерам
+                const groupedModels = {};
+                config.available_models.forEach(model => {
+                    if (!groupedModels[model.provider]) {
+                        groupedModels[model.provider] = [];
+                    }
+                    groupedModels[model.provider].push(model);
+                });
+                
+                // Добавляем модели в select с группировкой
+                Object.keys(groupedModels).sort().forEach(provider => {
+                    const optgroup = document.createElement('optgroup');
+                    optgroup.label = provider.toUpperCase();
+                    groupedModels[provider].forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.id;
+                        option.textContent = `${model.name}${model.requires_api_key ? ' (требует API ключ)' : ' (встроенная)'}`;
+                        optgroup.appendChild(option);
+                    });
+                    modelSelect.appendChild(optgroup);
+                });
+                
+                // Устанавливаем выбранную модель
+                if (config.selected_model_id) {
+                    modelSelect.value = config.selected_model_id;
+                    updateModelUI();
+                }
             }
             
-            document.getElementById('aiModel').value = config.ai_model;
+            // Загружаем API ключ (маскированный)
+            if (config.ai_api_key) {
+                document.getElementById('apiKey').value = config.ai_api_key;
+            }
             
             document.getElementById('temperature').value = Math.round(config.temperature * 100);
             updateTempValue(Math.round(config.temperature * 100));
@@ -204,14 +244,60 @@ async function loadSettings() {
             document.getElementById('cacheDuration').value = config.cache_duration;
             document.getElementById('loggingEnabled').checked = config.logging_enabled;
             document.getElementById('logFile').value = config.log_file;
-
-            showAlert('success', 'Настройки загружены');
         }
     } catch (error) {
         console.error('Ошибка загрузки настроек:', error);
         // Загружаем значения по умолчанию
         loadPromptPreset('default');
     }
+}
+
+// Обновление UI в зависимости от выбранной модели
+function updateModelUI() {
+    const modelSelect = document.getElementById('aiModelId');
+    const apiKeyGroup = document.getElementById('apiKeyGroup');
+    const apiKeyDescription = document.getElementById('apiKeyDescription');
+    const modelDescription = document.getElementById('modelDescription');
+    
+    const selectedOption = modelSelect.options[modelSelect.selectedIndex];
+    const modelId = modelSelect.value;
+    
+    if (!modelId) {
+        apiKeyGroup.style.display = 'none';
+        modelDescription.style.display = 'none';
+        return;
+    }
+    
+    // Получаем информацию о модели из списка доступных моделей
+    fetch('/api/ai/models')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                const model = data.models.find(m => m.id == modelId);
+                if (model) {
+                    // Показываем описание модели
+                    if (model.description) {
+                        modelDescription.textContent = model.description;
+                        modelDescription.style.display = 'block';
+                    } else {
+                        modelDescription.style.display = 'none';
+                    }
+                    
+                    // Показываем/скрываем поле API ключа
+                    if (model.requires_api_key) {
+                        apiKeyGroup.style.display = 'block';
+                        apiKeyDescription.textContent = `Введите ваш API ключ для ${model.provider.toUpperCase()}`;
+                    } else {
+                        apiKeyGroup.style.display = 'none';
+                        // Очищаем API ключ, если модель не требует его
+                        document.getElementById('apiKey').value = '';
+                    }
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка загрузки информации о модели:', error);
+        });
 }
 
 // Тест AI

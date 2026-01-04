@@ -268,6 +268,14 @@
                         </div>
                     </div>
                     
+                    <div class="form-group" id="aiModelGroup" style="display: none;">
+                        <label>Модель AI по умолчанию</label>
+                        <select id="aiModelId">
+                            <option value="">Не выбрана (учитель выберет сам)</option>
+                        </select>
+                        <small style="color: #666;">Опционально: можно установить модель по умолчанию для учителя</small>
+                    </div>
+                    
                     <div class="form-group" id="isActiveGroup" style="display: none;">
                         <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
                             <input type="checkbox" id="isActive" style="width: auto; cursor: pointer;">
@@ -411,18 +419,42 @@
             // Функция для фильтрации школ (можно реализовать позже)
         }
         
-        function openCreateModal() {
+        async function openCreateModal() {
             document.getElementById('modalTitle').textContent = 'Добавить учителя';
             document.getElementById('teacherForm').reset();
             document.getElementById('teacherId').value = '';
             document.getElementById('username').value = '';
             document.getElementById('isActiveGroup').style.display = 'none';
+            document.getElementById('aiModelGroup').style.display = 'none';
+            await loadAIModels();
             document.getElementById('teacherModal').style.display = 'block';
         }
         
-        function editTeacher(id) {
+        async function loadAIModels() {
+            try {
+                const response = await fetch('/api/admin/ai-models');
+                const data = await response.json();
+                if (data.success) {
+                    const select = document.getElementById('aiModelId');
+                    select.innerHTML = '<option value="">Не выбрана (учитель выберет сам)</option>';
+                    data.models.filter(m => m.is_active).forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.id;
+                        option.textContent = model.name;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки моделей:', error);
+            }
+        }
+        
+        async function editTeacher(id) {
             const teacher = teachers.find(t => t.id === id);
             if (!teacher) return;
+            
+            // Загружаем список моделей
+            await loadAIModels();
             
             document.getElementById('modalTitle').textContent = 'Редактировать учителя';
             document.getElementById('teacherId').value = teacher.id;
@@ -437,7 +469,9 @@
             document.getElementById('expirationDate').value = teacher.expiration_date || '';
             document.getElementById('maxTestsLimit').value = teacher.max_tests_limit || '';
             document.getElementById('isActive').checked = teacher.is_active !== false;
+            document.getElementById('aiModelId').value = teacher.ai_model_id || '';
             document.getElementById('isActiveGroup').style.display = 'block';
+            document.getElementById('aiModelGroup').style.display = 'block';
             document.getElementById('password').value = '';
             document.getElementById('password').required = false;
             document.getElementById('teacherModal').style.display = 'block';
@@ -464,9 +498,15 @@
                 max_tests_limit: document.getElementById('maxTestsLimit').value ? parseInt(document.getElementById('maxTestsLimit').value) : null
             };
             
-            // Добавляем is_active только при редактировании
+            // Добавляем is_active и ai_model_id только при редактировании
             if (id) {
                 data.is_active = document.getElementById('isActive').checked;
+                const aiModelId = document.getElementById('aiModelId').value;
+                if (aiModelId) {
+                    data.ai_model_id = parseInt(aiModelId);
+                } else {
+                    data.ai_model_id = null;
+                }
             }
             
             const password = document.getElementById('password').value.trim();

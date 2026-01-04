@@ -36,15 +36,20 @@ class AIAnswerChecker:
         Инициализация проверщика с кэшированием
         
         Args:
-            provider: "groq", "gemini", "huggingface", или "cohere"
-            api_key: API ключ (если None, берется из переменных окружения)
+            provider: "groq", "gemini", "huggingface", "cohere", или "ollama"
+            api_key: API ключ (если None, берется из переменных окружения). Для ollama не требуется.
         """
         self.provider = provider.lower()
-        self.api_key = api_key if api_key else self._get_api_key_from_env()
         
-        if not self.api_key:
-            raise ValueError(f"API ключ для {provider} не найден. "
-                           f"Установите переменную окружения {self._get_env_var_name()} или передайте его напрямую.")
+        # Для Ollama API ключ не требуется
+        if self.provider == "ollama":
+            self.api_key = None
+        else:
+            self.api_key = api_key if api_key else self._get_api_key_from_env()
+            
+            if not self.api_key:
+                raise ValueError(f"API ключ для {provider} не найден. "
+                               f"Установите переменную окружения {self._get_env_var_name()} или передайте его напрямую.")
     
     def _get_env_var_name(self) -> str:
         """Получить имя переменной окружения для API ключа"""
@@ -112,6 +117,8 @@ class AIAnswerChecker:
             result = self._check_with_huggingface(student_answer, correct_variants, question_context)
         elif self.provider == "cohere":
             result = self._check_with_cohere(student_answer, correct_variants, question_context, system_prompt)
+        elif self.provider == "ollama":
+            result = self._check_with_ollama(student_answer, correct_variants, question_context, system_prompt, model_to_use)
         else:
             raise ValueError(f"Неподдерживаемый провайдер: {self.provider}")
         
@@ -380,6 +387,80 @@ class AIAnswerChecker:
             
         except Exception as e:
             print(f"Ошибка Cohere API: {e}")
+            return self._fallback_check(student_answer, correct_variants, error_message=str(e))
+    
+    def _check_with_ollama(self, student_answer: str, correct_variants: List[str],
+                           question_context: str = "",
+                           system_prompt: Optional[str] = None,
+                           model_name: str = "qwen2.5:1.5b") -> AICheckResult:
+        """Проверка ответа через локальную Ollama модель"""
+        # Получаем URL Ollama из переменной окружения или используем по умолчанию
+        ollama_url = os.getenv('OLLAMA_URL', 'http://localhost:11434')
+        
+        # Формируем промпт аналогично Gemini
+        correct_answers_str = "\n".join([f"- {v}" for v in correct_variants])
+        
+        user_prompt = f"""Проверь ответ студента. Верни ТОЛЬКО валидный JSON, без дополнительного текста.
+
+Вопрос/Контекст: {question_context or "Не указан"}
+
+Правильные ответы:
+{correct_answers_str}
+
+Ответ студента: "{student_answer}"
+
+Критерии:
+- Учитывай синонимы, опечатки, падежи
+- Будь лоялен если суть верна
+- VR = virtual reality (разные форматы допустимы)
+- Истина/Верно/True - синонимы
+- Ложь/Не верно/False - синонимы
+
+Формат ответа (только JSON, ничего больше):
+{{"is_correct": true, "confidence": 95, "explanation": "краткое пояснение"}}"""
+        
+        try:
+            url = f"{ollama_url}/api/generate"
+            
+            response = requests.post(
+                url,
+                json={
+                    "model": model_name,
+                    "prompt": user_prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.1,
+                        "num_predict": 200,
+                        "top_p": 0.8,
+                        "top_k": 10
+                    }
+                },
+                timeout=30  # Ollama может работать медленнее на CPU
+            )
+            
+            response.encoding = 'utf-8'
+            response.raise_for_status()
+            
+            result = response.json()
+            content = result.get("response", "").strip()
+            
+            # Парсим JSON из ответа
+            json_result = self._extract_json(content)
+            
+            return AICheckResult(
+                is_correct=json_result.get('is_correct', False),
+                confidence=json_result.get('confidence', 0) / 100.0,
+                explanation=json_result.get('explanation', 'Нет объяснения от AI'),
+                ai_provider='ollama',
+                from_cache=False
+            )
+            
+        except requests.exceptions.ConnectionError:
+            error_msg = f"Не удалось подключиться к Ollama по адресу {ollama_url}. Убедитесь, что Ollama запущен."
+            print(f"❌ Ошибка Ollama: {error_msg}")
+            return self._fallback_check(student_answer, correct_variants, error_message=error_msg)
+        except Exception as e:
+            print(f"❌ Ошибка Ollama: {e}")
             return self._fallback_check(student_answer, correct_variants, error_message=str(e))
     
     def _extract_json(self, text: str) -> Dict:

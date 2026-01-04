@@ -10,7 +10,7 @@ from datetime import datetime, date
 import re
 from config import Config
 from auth_utils import auth_manager, login_required, superuser_required
-from models import SessionLocal, User, Template, AuditLog, Subject, SubjectClass
+from models import SessionLocal, User, Template, AuditLog, Subject, SubjectClass, AIModel
 from validators import ValidationError, validate_teacher_data, validate_topic, validate_topic_slug, validate_subject_classes
 from utils import generate_username, generate_topic_slug, generate_random_password, generate_username_from_name, sanitize_username
 from ai_checker import AIAnswerChecker
@@ -185,8 +185,22 @@ def ai_settings():
             # Получаем индивидуальную настройку пользователя из БД
             db = SessionLocal()
             user = None
+            available_models = []
             try:
                 user = db.query(User).filter(User.username == session.get('login')).first()
+                
+                # Загружаем список доступных моделей
+                models = db.query(AIModel).filter(AIModel.is_active == True).order_by(AIModel.priority.asc(), AIModel.name.asc()).all()
+                for model in models:
+                    available_models.append({
+                        'id': model.id,
+                        'name': model.name,
+                        'provider': model.provider,
+                        'model_name': model.model_name,
+                        'requires_api_key': model.requires_api_key,
+                        'description': model.description,
+                        'config_json': model.config_json
+                    })
             except Exception as e:
                 print(f"Ошибка при получении пользователя: {e}")
             finally:
@@ -201,8 +215,6 @@ def ai_settings():
                 from ai_config import AIConfig
                 settings = {
                     'similarity_threshold': AIConfig.SIMILARITY_THRESHOLD,
-                    'api_key': 'YOUR_API_KEY_HERE',
-                    'ai_model': AIConfig.GEMINI_MODEL,
                     'temperature': AIConfig.GENERATION_CONFIG['temperature'],
                     'max_tokens': AIConfig.GENERATION_CONFIG['max_output_tokens'],
                     'top_p': AIConfig.GENERATION_CONFIG['top_p'],
@@ -213,11 +225,22 @@ def ai_settings():
                     'log_file': AIConfig.AI_LOG_FILE
                 }
             
-            # Добавляем индивидуальную настройку пользователя
+            # Добавляем индивидуальные настройки пользователя
             if user:
                 settings['ai_enabled'] = user.ai_checking_enabled
+                settings['selected_model_id'] = user.ai_model_id
+                # Маскируем API ключ
+                if user.ai_api_key:
+                    masked_key = '***' + user.ai_api_key[-4:] if len(user.ai_api_key) > 4 else '***'
+                    settings['ai_api_key'] = masked_key
+                else:
+                    settings['ai_api_key'] = ''
             else:
-                settings['ai_enabled'] = False  # По умолчанию выключено
+                settings['ai_enabled'] = False
+                settings['selected_model_id'] = None
+                settings['ai_api_key'] = ''
+            
+            settings['available_models'] = available_models
             
             return jsonify({'success': True, 'config': settings})
         
@@ -235,27 +258,66 @@ def ai_settings():
             try:
                 user = db.query(User).filter(User.username == session.get('login')).first()
                 
+                if not user:
+                    db.close()
+                    return jsonify({'success': False, 'error': 'Пользователь не найден'}), 404
+                
                 # Сохраняем индивидуальную настройку ai_checking_enabled в БД
-                if user and 'ai_enabled' in settings:
-                    new_value = settings.get('ai_enabled', False)
-                    print(f"💾 Сохранение настройки AI для пользователя {user.username}: {new_value}")
-                    user.ai_checking_enabled = new_value
-                    user.updated_at = datetime.utcnow()
-                    db.commit()
-                    # Проверяем, что значение сохранилось
-                    db.refresh(user)
-                    print(f"✅ Настройка сохранена. Проверка: user.ai_checking_enabled = {user.ai_checking_enabled}")
+                if 'ai_enabled' in settings:
+                    user.ai_checking_enabled = settings.get('ai_enabled', False)
+                
+                # Сохраняем выбранную модель
+                if 'ai_model_id' in settings:
+                    model_id = settings.get('ai_model_id')
+                    if model_id:
+                        # Проверяем, что модель существует и активна
+                        model = db.query(AIModel).filter(AIModel.id == model_id, AIModel.is_active == True).first()
+                        if not model:
+                            db.close()
+                            return jsonify({'success': False, 'error': 'Выбранная модель не найдена или неактивна'}), 400
+                        
+                        user.ai_model_id = model_id
+                        
+                        # Если модель требует API ключ, проверяем наличие ключа
+                        if model.requires_api_key:
+                            api_key = settings.get('ai_api_key', '')
+                            # Если ключ не начинается с *** (т.е. это новый ключ)
+                            if api_key and not api_key.startswith('***'):
+                                user.ai_api_key = api_key
+                            elif not user.ai_api_key:
+                                db.close()
+                                return jsonify({
+                                    'success': False,
+                                    'error': 'Выбранная модель требует API ключ. Пожалуйста, укажите API ключ.'
+                                }), 400
+                    else:
+                        user.ai_model_id = None
+                        user.ai_api_key = None
+                elif 'ai_api_key' in settings:
+                    # Обновление только API ключа
+                    api_key = settings.get('ai_api_key', '')
+                    if api_key and not api_key.startswith('***'):
+                        user.ai_api_key = api_key
+                
+                user.updated_at = datetime.utcnow()
+                db.commit()
+                db.refresh(user)
+                print(f"✅ Настройки AI сохранены для пользователя {user.username}")
             except Exception as e:
                 if db:
                     db.rollback()
                 print(f"Ошибка при сохранении индивидуальных настроек: {e}")
+                db.close()
+                return jsonify({'success': False, 'error': str(e)}), 500
             finally:
                 if db:
                     db.close()
             
-            # Сохраняем глобальные настройки в файл (без ai_enabled)
+            # Сохраняем глобальные настройки в файл (без ai_enabled, ai_model_id, ai_api_key)
             global_settings = settings.copy()
-            global_settings.pop('ai_enabled', None)  # Удаляем ai_enabled из глобальных настроек
+            global_settings.pop('ai_enabled', None)
+            global_settings.pop('ai_model_id', None)
+            global_settings.pop('ai_api_key', None)
             
             with open(settings_file, 'w', encoding='utf-8') as f:
                 json.dump(global_settings, f, ensure_ascii=False, indent=2)
@@ -263,11 +325,6 @@ def ai_settings():
             # Обновляем конфигурацию в памяти
             from ai_config import AIConfig
             AIConfig.SIMILARITY_THRESHOLD = settings.get('similarity_threshold', 0.8)
-            
-            if settings.get('api_key') and not settings['api_key'].startswith('***'):
-                AIConfig.GEMINI_API_KEY = settings['api_key']
-            
-            AIConfig.GEMINI_MODEL = settings.get('ai_model', 'gemini-pro')
             AIConfig.GENERATION_CONFIG['temperature'] = settings.get('temperature', 0.1)
             AIConfig.GENERATION_CONFIG['max_output_tokens'] = settings.get('max_tokens', 200)
             AIConfig.GENERATION_CONFIG['top_p'] = settings.get('top_p', 0.95)
@@ -742,6 +799,11 @@ def get_teacher(teacher_id):
             Template.created_by_username == teacher.username
         ).count()
         
+        # Получаем информацию о модели AI
+        ai_model_name = None
+        if teacher.ai_model:
+            ai_model_name = teacher.ai_model.name
+        
         teacher_data = {
             'id': teacher.id,
             'username': teacher.username,
@@ -756,6 +818,8 @@ def get_teacher(teacher_id):
             'expiration_date': teacher.expiration_date.isoformat() if teacher.expiration_date else None,
             'max_tests_limit': teacher.max_tests_limit,
             'tests_count': tests_count,
+            'ai_model_id': teacher.ai_model_id,
+            'ai_model_name': ai_model_name,
             'created_at': teacher.created_at.isoformat() if teacher.created_at else None
         }
         
@@ -840,6 +904,16 @@ def update_teacher(teacher_id):
             teacher.max_tests_limit = data['max_tests_limit']
         if 'is_active' in data:
             teacher.is_active = data['is_active']
+        if 'ai_model_id' in data:
+            model_id = data.get('ai_model_id')
+            if model_id:
+                # Проверяем, что модель существует и активна
+                model = db.query(AIModel).filter(AIModel.id == model_id, AIModel.is_active == True).first()
+                if not model:
+                    return jsonify({'success': False, 'error': 'Модель не найдена или неактивна'}), 400
+                teacher.ai_model_id = model_id
+            else:
+                teacher.ai_model_id = None
         
         teacher.updated_at = datetime.utcnow()
         
@@ -1236,6 +1310,259 @@ def delete_subject(subject_id):
         )
         
         return jsonify({'success': True, 'message': 'Предмет деактивирован'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==========================
+# API УПРАВЛЕНИЯ AI МОДЕЛЯМИ
+# ==========================
+
+@app.route('/admin/ai-models')
+@superuser_required
+def admin_ai_models_page():
+    """Страница управления AI моделями"""
+    return render_template('admin_ai_models.html', login=session.get('login'))
+
+
+@app.route('/api/admin/ai-models', methods=['GET'])
+@superuser_required
+def list_ai_models():
+    """Получение списка всех AI моделей"""
+    try:
+        db = SessionLocal()
+        models = db.query(AIModel).order_by(AIModel.priority.asc(), AIModel.name.asc()).all()
+        
+        models_data = []
+        for model in models:
+            # Подсчет количества учителей, использующих модель
+            users_count = db.query(User).filter(User.ai_model_id == model.id).count()
+            
+            models_data.append({
+                'id': model.id,
+                'name': model.name,
+                'provider': model.provider,
+                'model_name': model.model_name,
+                'requires_api_key': model.requires_api_key,
+                'is_active': model.is_active,
+                'description': model.description,
+                'config_json': model.config_json,
+                'priority': model.priority,
+                'max_requests_per_minute': model.max_requests_per_minute,
+                'users_count': users_count,
+                'created_at': model.created_at.isoformat() if model.created_at else None,
+                'updated_at': model.updated_at.isoformat() if model.updated_at else None
+            })
+        
+        db.close()
+        return jsonify({'success': True, 'models': models_data})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/ai-models', methods=['POST'])
+@superuser_required
+def create_ai_model():
+    """Создание новой AI модели"""
+    try:
+        data = request.get_json()
+        
+        # Валидация обязательных полей
+        required_fields = ['name', 'provider', 'model_name']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({'success': False, 'error': f'Поле {field} обязательно'}), 400
+        
+        db = SessionLocal()
+        
+        # Создание модели
+        new_model = AIModel(
+            name=data['name'],
+            provider=data['provider'],
+            model_name=data['model_name'],
+            requires_api_key=data.get('requires_api_key', False),
+            is_active=data.get('is_active', True),
+            description=data.get('description'),
+            config_json=data.get('config_json'),
+            priority=data.get('priority', 0),
+            max_requests_per_minute=data.get('max_requests_per_minute')
+        )
+        
+        db.add(new_model)
+        db.commit()
+        db.refresh(new_model)
+        
+        model_data = {
+            'id': new_model.id,
+            'name': new_model.name,
+            'provider': new_model.provider,
+            'model_name': new_model.model_name,
+            'requires_api_key': new_model.requires_api_key,
+            'is_active': new_model.is_active,
+            'description': new_model.description,
+            'config_json': new_model.config_json,
+            'priority': new_model.priority,
+            'max_requests_per_minute': new_model.max_requests_per_minute
+        }
+        
+        db.close()
+        
+        # Логирование
+        log_audit_action(
+            action='create_ai_model',
+            target_type='ai_model',
+            target_id=new_model.id,
+            details={'name': new_model.name, 'provider': new_model.provider}
+        )
+        
+        return jsonify({'success': True, 'model': model_data}), 201
+    
+    except Exception as e:
+        if db:
+            db.rollback()
+            db.close()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/ai-models/<int:model_id>', methods=['PUT'])
+@superuser_required
+def update_ai_model(model_id):
+    """Обновление AI модели"""
+    try:
+        data = request.get_json()
+        db = SessionLocal()
+        
+        model = db.query(AIModel).filter(AIModel.id == model_id).first()
+        
+        if not model:
+            db.close()
+            return jsonify({'success': False, 'error': 'Модель не найдена'}), 404
+        
+        # Обновление полей
+        if 'name' in data:
+            model.name = data['name']
+        if 'provider' in data:
+            model.provider = data['provider']
+        if 'model_name' in data:
+            model.model_name = data['model_name']
+        if 'requires_api_key' in data:
+            model.requires_api_key = data['requires_api_key']
+        if 'is_active' in data:
+            model.is_active = data['is_active']
+        if 'description' in data:
+            model.description = data['description']
+        if 'config_json' in data:
+            model.config_json = data['config_json']
+        if 'priority' in data:
+            model.priority = data['priority']
+        if 'max_requests_per_minute' in data:
+            model.max_requests_per_minute = data['max_requests_per_minute']
+        
+        model.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(model)
+        
+        model_data = {
+            'id': model.id,
+            'name': model.name,
+            'provider': model.provider,
+            'model_name': model.model_name,
+            'requires_api_key': model.requires_api_key,
+            'is_active': model.is_active,
+            'description': model.description,
+            'config_json': model.config_json,
+            'priority': model.priority,
+            'max_requests_per_minute': model.max_requests_per_minute
+        }
+        
+        db.close()
+        
+        # Логирование
+        log_audit_action(
+            action='update_ai_model',
+            target_type='ai_model',
+            target_id=model_id,
+            details=data
+        )
+        
+        return jsonify({'success': True, 'model': model_data})
+    
+    except Exception as e:
+        if db:
+            db.rollback()
+            db.close()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/ai-models/<int:model_id>', methods=['DELETE'])
+@superuser_required
+def delete_ai_model(model_id):
+    """Удаление AI модели"""
+    try:
+        db = SessionLocal()
+        
+        model = db.query(AIModel).filter(AIModel.id == model_id).first()
+        
+        if not model:
+            db.close()
+            return jsonify({'success': False, 'error': 'Модель не найдена'}), 404
+        
+        # Проверка использования модели
+        users_count = db.query(User).filter(User.ai_model_id == model_id).count()
+        if users_count > 0:
+            db.close()
+            return jsonify({
+                'success': False,
+                'error': f'Модель используется {users_count} учителем(ями). Сначала переключите их на другую модель.'
+            }), 400
+        
+        # Удаление модели
+        db.delete(model)
+        db.commit()
+        db.close()
+        
+        # Логирование
+        log_audit_action(
+            action='delete_ai_model',
+            target_type='ai_model',
+            target_id=model_id,
+            details={'name': model.name}
+        )
+        
+        return jsonify({'success': True, 'message': 'Модель удалена'})
+    
+    except Exception as e:
+        if db:
+            db.rollback()
+            db.close()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/ai/models', methods=['GET'])
+@login_required
+def get_available_ai_models():
+    """Получение списка доступных AI моделей для текущего пользователя"""
+    try:
+        db = SessionLocal()
+        # Возвращаем только активные модели
+        models = db.query(AIModel).filter(AIModel.is_active == True).order_by(AIModel.priority.asc(), AIModel.name.asc()).all()
+        
+        models_data = []
+        for model in models:
+            models_data.append({
+                'id': model.id,
+                'name': model.name,
+                'provider': model.provider,
+                'model_name': model.model_name,
+                'requires_api_key': model.requires_api_key,
+                'description': model.description,
+                'config_json': model.config_json
+            })
+        
+        db.close()
+        return jsonify({'success': True, 'models': models_data})
     
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -2234,6 +2561,8 @@ def check_answers():
         # Определяем настройки ИИ для создателя теста
         created_by_username = template.get('created_by_username')
         ai_checking_enabled = False  # По умолчанию выключено
+        ai_checker = None
+        ai_model_config = None
         
         print(f"🔍 Проверка настроек AI для теста {template_id}")
         print(f"   Создатель теста: {created_by_username}")
@@ -2245,6 +2574,37 @@ def check_answers():
                 if creator:
                     ai_checking_enabled = creator.ai_checking_enabled
                     print(f"   ✅ Найден создатель: {creator.username}, AI проверка: {ai_checking_enabled}")
+                    
+                    # Получаем модель AI из БД
+                    if creator.ai_model and creator.ai_model.is_active:
+                        ai_model = creator.ai_model
+                        provider = ai_model.provider
+                        model_name = ai_model.model_name
+                        ai_model_config = ai_model.config_json or {}
+                        
+                        print(f"   🤖 Модель AI: {ai_model.name} ({provider})")
+                        
+                        # Создаем AI checker с правильным провайдером
+                        try:
+                            api_key = None
+                            if ai_model.requires_api_key:
+                                api_key = creator.ai_api_key
+                                if not api_key:
+                                    print(f"   ⚠️ Модель требует API ключ, но он не указан")
+                                    ai_checker = None
+                                else:
+                                    ai_checker = AIAnswerChecker(provider=provider, api_key=api_key)
+                            else:
+                                # Для Ollama API ключ не требуется
+                                ai_checker = AIAnswerChecker(provider=provider, api_key=None)
+                            
+                            if ai_checker:
+                                print(f"   ✅ AI checker создан для провайдера {provider}")
+                        except Exception as e:
+                            print(f"   ❌ Ошибка создания AI checker: {e}")
+                            ai_checker = None
+                    else:
+                        print(f"   ⚠️ Модель AI не выбрана или неактивна для создателя")
                 else:
                     print(f"   ⚠️ Создатель '{created_by_username}' не найден в БД")
             except Exception as e:
@@ -2255,9 +2615,6 @@ def check_answers():
             print(f"   ⚠️ created_by_username не указан в шаблоне")
         
         print(f"   📊 Итоговое значение ai_checking_enabled: {ai_checking_enabled}")
-
-        # Получаем AI checker
-        ai_checker = get_ai_checker()
 
         correct_count = 0
         total_count = len(fields)
@@ -2334,12 +2691,29 @@ def check_answers():
                     print(f"   Ответ студента: '{student_answer}'")
                     print(f"   Правильные варианты: {correct_variants}")
 
+                    # Используем model_name из модели, если доступен
+                    model_name_to_use = None
+                    if created_by_username:
+                        db = SessionLocal()
+                        try:
+                            creator = db.query(User).filter(User.username == created_by_username).first()
+                            if creator and creator.ai_model:
+                                model_name_to_use = creator.ai_model.model_name
+                        except Exception:
+                            pass
+                        finally:
+                            db.close()
+                    
+                    # Используем параметры из config_json модели, если доступны
+                    temperature = ai_model_config.get('temperature', 0.1) if ai_model_config else 0.1
+                    max_tokens = ai_model_config.get('max_tokens', 200) if ai_model_config else 200
+                    
                     check_result = ai_checker.check_answer(
                         student_answer=student_answer,
                         correct_variants=correct_variants,
                         question_context=question_context,
                         system_prompt=AIConfig.SYSTEM_PROMPT,
-                        model_name=AIConfig.GEMINI_MODEL
+                        model_name=model_name_to_use
                     )
 
                     result_dict = asdict(check_result)
