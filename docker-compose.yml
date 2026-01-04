@@ -50,6 +50,7 @@ services:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - SECRET_KEY=${SECRET_KEY}
       - DEBUG=False
+      - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434}
     volumes:
       - ./uploads:/app/uploads
       - ./templates_json:/app/templates_json

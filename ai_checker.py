@@ -395,7 +395,8 @@ class AIAnswerChecker:
                            model_name: str = "qwen2.5:1.5b") -> AICheckResult:
         """Проверка ответа через локальную Ollama модель"""
         # Получаем URL Ollama из переменной окружения или используем по умолчанию
-        ollama_url = os.getenv('OLLAMA_URL', 'http://localhost:11434')
+        # В Docker используем имя контейнера 'ollama', локально - 'localhost'
+        ollama_url = os.getenv('OLLAMA_URL', 'http://ollama:11434')
         
         # Формируем промпт аналогично Gemini
         correct_answers_str = "\n".join([f"- {v}" for v in correct_variants])
