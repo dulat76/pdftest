@@ -431,7 +431,7 @@ class AIAnswerChecker:
                     "stream": False,
                     "options": {
                         "temperature": 0.1,
-                        "num_predict": 200,
+                        "num_predict": 150,  # Уменьшено для ускорения обработки
                         "top_p": 0.8,
                         "top_k": 10
                     }
@@ -456,13 +456,18 @@ class AIAnswerChecker:
                 from_cache=False
             )
             
+        except requests.exceptions.Timeout:
+            error_msg = f"Таймаут при подключении к Ollama по адресу {ollama_url}. Модель может быть еще не загружена в память или работает слишком медленно. Попробуйте позже."
+            print(f"❌ Таймаут Ollama: {error_msg}")
+            return self._fallback_check(student_answer, correct_variants, error_message=error_msg)
         except requests.exceptions.ConnectionError:
             error_msg = f"Не удалось подключиться к Ollama по адресу {ollama_url}. Убедитесь, что Ollama запущен."
-            print(f"❌ Ошибка Ollama: {error_msg}")
+            print(f"❌ Ошибка подключения Ollama: {error_msg}")
             return self._fallback_check(student_answer, correct_variants, error_message=error_msg)
         except Exception as e:
-            print(f"❌ Ошибка Ollama: {e}")
-            return self._fallback_check(student_answer, correct_variants, error_message=str(e))
+            error_msg = f"Ошибка Ollama: {str(e)}"
+            print(f"❌ Ошибка Ollama: {error_msg}")
+            return self._fallback_check(student_answer, correct_variants, error_message=error_msg)
     
     def _extract_json(self, text: str) -> Dict:
         """Извлечь JSON из текста с правильной обработкой UTF-8"""
