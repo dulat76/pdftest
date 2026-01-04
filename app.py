@@ -195,8 +195,9 @@ def ai_settings():
                 for model in all_models:
                     # Для моделей Ollama проверяем доступ
                     if model.provider == 'ollama':
-                        # Модель доступна если глобально включена ИЛИ у пользователя есть индивидуальный доступ
-                        if model.is_available_for_teachers or (user.ollama_access_enabled if user else False):
+                        # Модель доступна ТОЛЬКО если у пользователя есть индивидуальный доступ
+                        # Глобальный флаг is_available_for_teachers не используется для Ollama
+                        if user and user.ollama_access_enabled:
                             available_models.append({
                                 'id': model.id,
                                 'name': model.name,
@@ -1572,8 +1573,9 @@ def get_available_ai_models():
         for model in all_models:
             # Для моделей Ollama проверяем доступ
             if model.provider == 'ollama':
-                # Модель доступна если глобально включена ИЛИ у пользователя есть индивидуальный доступ
-                if model.is_available_for_teachers or (user.ollama_access_enabled if user else False):
+                # Модель доступна ТОЛЬКО если у пользователя есть индивидуальный доступ
+                # Глобальный флаг is_available_for_teachers не используется для Ollama
+                if user.ollama_access_enabled:
                     models_data.append({
                         'id': model.id,
                         'name': model.name,
