@@ -135,8 +135,54 @@ function loadPromptPreset(preset) {
     showAlert('success', 'Промпт загружен');
 }
 
+// Валидация настроек перед сохранением
+function validateSettings() {
+    const errors = [];
+    const aiEnabled = document.getElementById('aiEnabled').checked;
+    
+    if (aiEnabled) {
+        const aiModelId = document.getElementById('aiModelId').value;
+        const apiKey = document.getElementById('apiKey').value;
+        const apiKeyGroup = document.getElementById('apiKeyGroup');
+        
+        // Проверяем, выбрана ли модель
+        if (!aiModelId) {
+            errors.push('⚠️ Необходимо выбрать модель AI для проверки ответов');
+        } else {
+            // Проверяем, требуется ли API ключ
+            if (apiKeyGroup.style.display !== 'none') {
+                // Модель требует API ключ
+                if (!apiKey || apiKey.startsWith('***')) {
+                    errors.push('⚠️ Выбранная модель требует API ключ. Пожалуйста, введите действительный API ключ.');
+                }
+            }
+        }
+        
+        // Проверяем корректность других параметров
+        const maxTokens = parseInt(document.getElementById('maxTokens').value);
+        if (isNaN(maxTokens) || maxTokens < 1 || maxTokens > 10000) {
+            errors.push('⚠️ Максимальное количество токенов должно быть от 1 до 10000');
+        }
+        
+        const topP = parseFloat(document.getElementById('topP').value);
+        if (isNaN(topP) || topP < 0 || topP > 1) {
+            errors.push('⚠️ Параметр Top-P должен быть от 0 до 1');
+        }
+    }
+    
+    return errors;
+}
+
 // Сохранение настроек
 async function saveSettings() {
+    // Валидация перед отправкой
+    const validationErrors = validateSettings();
+    if (validationErrors.length > 0) {
+        const errorMessage = validationErrors.join('<br>');
+        showCriticalError(errorMessage);
+        return;
+    }
+    
     const aiModelId = document.getElementById('aiModelId').value;
     const apiKey = document.getElementById('apiKey').value;
     
@@ -171,12 +217,19 @@ async function saveSettings() {
         const result = await response.json();
         
         if (result.success) {
-            showAlert('success', 'Настройки сохранены');
+            // Очищаем критические ошибки при успешном сохранении
+            const container = document.getElementById('alertContainer');
+            const criticalErrors = container.querySelectorAll('.alert.error.persistent');
+            criticalErrors.forEach(err => err.remove());
+            
+            showAlert('success', '✅ Настройки успешно сохранены');
         } else {
-            showAlert('error', '❌ Ошибка сохранения: ' + result.error);
+            // Критическая ошибка - не исчезает автоматически
+            showCriticalError('❌ Ошибка сохранения настроек: ' + result.error + '<br><small>Пожалуйста, проверьте введенные данные и попробуйте снова.</small>');
         }
     } catch (error) {
-        showAlert('error', '❌ Ошибка: ' + error.message);
+        // Критическая ошибка сети или сервера
+        showCriticalError('❌ Критическая ошибка: ' + error.message + '<br><small>Проверьте подключение к интернету и попробуйте снова. Если проблема сохраняется, обратитесь к администратору.</small>');
     }
 }
 
@@ -530,7 +583,7 @@ async function checkAIStatus() {
 }
 
 // Показ уведомления
-function showAlert(type, message) {
+function showAlert(type, message, persistent = false) {
     const container = document.getElementById('alertContainer');
     const icons = {
         success: '✅',
@@ -539,18 +592,62 @@ function showAlert(type, message) {
         info: 'ℹ️'
     };
     
-    const alert = document.createElement('div');
-    alert.className = `alert ${type}`;
-    alert.innerHTML = `<span>${icons[type]}</span><span>${message}</span>`;
+    // Очищаем контейнер только если это не критическая ошибка
+    if (!persistent || type !== 'error') {
+        container.innerHTML = '';
+    }
     
-    container.innerHTML = '';
+    const alert = document.createElement('div');
+    alert.className = `alert ${type} ${persistent ? 'persistent' : ''}`;
+    
+    let closeButton = '';
+    if (persistent) {
+        closeButton = '<button class="alert-close" onclick="this.parentElement.remove()" title="Закрыть">×</button>';
+    }
+    
+    alert.innerHTML = `
+        <span>${icons[type]}</span>
+        <span class="alert-message">${message}</span>
+        ${closeButton}
+    `;
+    
     container.appendChild(alert);
     
-    setTimeout(() => {
-        alert.style.opacity = '0';
-        alert.style.transition = 'opacity 0.5s';
-        setTimeout(() => alert.remove(), 500);
-    }, 5000);
+    // Для критических ошибок не скрываем автоматически
+    if (!persistent) {
+        setTimeout(() => {
+            alert.style.opacity = '0';
+            alert.style.transition = 'opacity 0.5s';
+            setTimeout(() => alert.remove(), 500);
+        }, type === 'error' ? 10000 : 5000); // Ошибки показываем дольше
+    } else {
+        // Для критических ошибок добавляем анимацию привлечения внимания
+        alert.style.animation = 'pulse 2s infinite';
+        // Звуковой сигнал (опционально, если браузер разрешает)
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            oscillator.frequency.value = 800;
+            oscillator.type = 'sine';
+            gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.3);
+        } catch (e) {
+            // Игнорируем ошибки звука (браузер может блокировать)
+        }
+    }
+}
+
+// Показ критической ошибки (не исчезает автоматически)
+function showCriticalError(message) {
+    showAlert('error', message, true);
+    // Прокручиваем к сообщению об ошибке
+    const container = document.getElementById('alertContainer');
+    container.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 // Модальное окно
